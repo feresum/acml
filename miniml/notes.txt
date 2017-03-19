@@ -1,0 +1,15 @@
+Type substitution maps should always be idempotent -- the set of keys should not intersect the set of values.
+Types should never be recursive when the substitution is ignored (that is, by going t.parms[..].parms[..].parms[..])
+
+a unification with preexisting mappings can be rewritten as one without?
+e.g. 'a='a->'b  and  'c='c->'d
+to
+F('a,'a,'c') and  F('c,'a->'b','c->'d)
+
+
+f(g('3, '4), '1, '3)
+f(g('1, '2), g('1, '2), g('3, '4))
+
+'3 -> '1
+'4 -> '2
+'1 -> g('3, '4)
