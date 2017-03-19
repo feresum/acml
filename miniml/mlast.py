@@ -1,7 +1,7 @@
 import mltypes as types
 from mltypes import VarType
 import llvm_util as lu
-dpr = lu.dpr
+from dbg import *
 
 class Expr:
     def __init__(self):
@@ -35,37 +35,47 @@ class Lambda(Expr):
     def children(self):
         return [self.expr]
     def closedVars(self):
-        return self.reduce(lambda n, rc: [n.key(), n.type] if isinstance(n, BindingRef) else sum(rc, []))
+        return self.reduce(lambda n, rc: [(n.key(), n.type)] if isinstance(n, BindingRef) else sum(rc, []))
     def compile(self, cx, out):
         name = cx.lamb()
+        cv = [(k,t) for (k,t) in self.closedVars() if k in cx.bindings]
         cx.bindings[self.var] = ['%arg']
         retLtype = self.type.result().llvm(cx)
         fdef = 'define %s %s(%%voidptr %%cl0, %s %%arg)\n{' % (retLtype, name,
             self.type.argument().llvm(cx))
-        cv = self.closedVars()
-        clTypes = zip(*cv)[1]
-        clType = lu.closureType(clTypes, cx)
+        
+        
         if cv:
-            loadClosure = ['%%clOuter = bitcast %%voidptr %%cl0 to %s*' % clType] + \
-                lu.loadField('%clOuter', clType, 1, lu.closureInnerType(clType, cx), cx, '%clInner')
+            clTypes = list(zip(*cv))[1]
+            clType = lu.closureType(clTypes, cx)
+            dpr('clty',clTypes,clType)
+            loadClosure = ['%%clPtr = bitcast %%voidptr %%cl0 to %s*' % clType,
+                           '%%cl = load %s* %%clPtr' % clType]
+            clTypedPtr, clPtr = cx.local(), cx.local() 
             storeClosure = []
             builder = 'undef'
             for i, (key, typ) in enumerate(cv):
                 reg = cx.local()
-                loadClosure.append('%s = extractvalue %s %s, %d' % (reg, clType, typ.llvm(cx), i))
+                loadClosure.append('%s = extractvalue %s %%cl, %d' % (reg, clType, i))
                 storeClosure.append('%s = insertvalue %s %s, %s %s, %d' % (
-                    reg, clType, build, typ.llvm(cx), cx.bindings[key][-1], i)
+                    reg, clType, builder, typ.llvm(cx), cx.bindings[key][-1], i))
                 cx.bindings[key].append(reg)
-                build = reg
-            loadClosure += ['
-                
-        else: loadClosure = storeClosure = []
+                builder = reg
+            storeClosure += lu.heapCreate(clType, builder, cx, clTypedPtr)
+            storeClosure += ['%s = bitcast %s* %s to %%voidptr' % (clPtr, clType, clTypedPtr)]
+            
+        else:
+            loadClosure = storeClosure = []
+            clPtr = 'null'
         fout = cx.local()
-        for line in self.expr.compile(cx, fout):
+        for line in loadClosure + self.expr.compile(cx, fout):
             fdef += '\n\t' + line
         fdef += '\n\tret %s %s\n}\n' % (retLtype, fout)
         cx.lambdaDefinitions.append(fdef)
-        return lu.makeFuncObj(name, self.type, 'null', cx, out)
+        del cx.bindings[self.var]
+        for key, _ in cv:
+            cx.bindings[key].pop()
+        return storeClosure + lu.makeFuncObj(name, self.type, clPtr, cx, out)
 class LetBinding(Expr):
     def __init__(self, var, value, expr):
         self.var = var
@@ -89,7 +99,10 @@ class LetBinding(Expr):
             # lt = t.llvm(cx)
             # t.llvm = lambda _: lt # lol
             cx.s = cx.s.parents
-        return code + self.expr.compile(cx, out)
+        ret = code + self.expr.compile(cx, out)
+        for t in self.var.instantiatedTypes:
+            del cx.bindings[t]
+        return ret
 
 class Sequence(Expr):
     def __init__(self, x0, x1):

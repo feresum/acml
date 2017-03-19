@@ -1,4 +1,5 @@
 from copy import copy
+from dbg import *
 
 def align(size, align):
     return (size + (align - 1)) & -align
@@ -24,10 +25,10 @@ class Aggregate(Ltype):
         size = 0
         self.align = 1
         for m in self.members:
-            size = align(size, m.align)
+            size = align(size, m.align) + m.size
             self.align = max(self.align, m.align)
         self.size = align(size, self.align)
-        self.name = '{' + ','.join(m.name for m in members) + '}'
+        self.name = '{' + ','.join(m.name for m in self.members) + '}'
 
 class Union(Ltype):
     def __init__(self, members):
@@ -37,7 +38,7 @@ class Union(Ltype):
         self.buf = Aggregate(self, self.size / self.align * [typeWithAlign[self.align]])
         self.name = self.buf.name
 
-i1 = Scalar('i1,' 1, 1)
+i1 = Scalar('i1', 1, 1)
 i8 = Scalar('i8', 1, 1)
 i32 = Scalar('i32', 4, 4)
 i64 = Scalar('i64', 8, 8)

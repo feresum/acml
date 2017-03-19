@@ -2,7 +2,6 @@ from sys import stderr
 from collections import ChainMap
 import ltypes as lt
 
-dpr = lambda *a: print(*a, file=stderr)
 
 unit_value = '%Unit undef'
 
@@ -34,7 +33,7 @@ class CompileContext:
     def __init__(self, bitness):
         self.id = 0
         self.builtins = set()
-        self.bindings
+        self.bindings = {}
         self.funcTypeDeclarations = {}
         self.lambdaDefinitions = []
         self.s = ChainMap(key_defaultdict())
@@ -110,17 +109,17 @@ def funcObjFunction(fobj, mtype, cx, out):
 def funcObjClosure(fobj, mtype, cx, out):
     return ['%s = extractvalue %s %s, 1' % (out, mtype.llvm(cx), fobj)]
     
-def closureInnerType(mtypes, cx):
-    return '{%s}' % ','.join(t.llvm(cx) for t in mtypes)
+
 def closureType(mtypes, cx):
-    inner = lt.Aggregate(cx.llvm(t) for t
-    return '{%s, {%s}}' % closureInnerType(mtypes, cx)
+    return lt.Aggregate(t.llvm(cx) for t in mtypes)
 
 
-def heapAllocate(ltype, out):
+def heapCreate(ltype, value, cx, out):
     p = cx.local()
+    cx.useBuiltin('~malloc')
     return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, ltype.size),
-            '%s = bitcast %%voidptr %s to %s' % (out, p, ltype)]
+            '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
+            'store %s %s, %s* %s' % (ltype, value, ltype, out)]
 
 class Struct: pass
 class StackStruct(Struct):

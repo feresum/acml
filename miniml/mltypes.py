@@ -1,7 +1,8 @@
 from collections import ChainMap
-from llvm_util import funcPtrType, key_defaultdict, dpr
+from llvm_util import funcPtrType, key_defaultdict
 from typeunion import TypeUnion
 import ltypes as lt
+from dbg import *
 
 def dbgEntry(f):
     def ff(*a):
@@ -139,14 +140,14 @@ def typeDbgStr(t, subst):
             return names[t]
         nonlocal i
         isVar = t.isTypeVariable()
-        free = isVar and t not in subst
+        free = isVar and t is subst[t]
         if t.isDirectlyRecursive(subst) or free:
             nonlocal i
             i += 1
             names[t] = "'" + str(i)
             if free: return names[t]
             nam = names[t] + '='
-        elif t in subst:
+        elif t is not subst[t]:
             return s(subst[t])
         else:
             nam = ''
