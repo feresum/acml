@@ -35,12 +35,15 @@ class CompileContext:
         self.builtins = set()
         self.bindings = {}
         self.funcTypeDeclarations = {}
+        self.destructors = {}
         self.lambdaDefinitions = []
         self.s = ChainMap(key_defaultdict())
         self.size_t = size_tMap[bitness]
         self.voidptr = lt.Scalar('%voidptr', self.size_t.size, self.size_t.align)
     def useBuiltin(self, f):
         self.builtins.add(f)
+    def getDestructor(self, mtype):
+        
     def local(self):
         self.id += 1
         return '%r' + str(self.id)
@@ -121,9 +124,11 @@ def heapCreate(ltype, value, cx, out):
             '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
             'store %s %s, %s* %s' % (ltype, value, ltype, out)]
 
-class Struct: pass
-class StackStruct(Struct):
-    def __init__(self, *types):
-        self.llvm_types = tuple(t.llvm() for t in types)
-    def readField(self, index): pass
+def structGEP(addr, ltype, out, *ind):
+    s = '%s = getelementpointer inbounds %s,%s* %s, i32 0' % (out, ltype, ltype, addr)
+    for i in ind:
+        s += ', i32 %d' % i
+    return [s]
     
+def store(type, value, addr):
+    return 'store %s %s, %s* %s' % (type, value, type addr)

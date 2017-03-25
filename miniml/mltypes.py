@@ -4,14 +4,7 @@ from typeunion import TypeUnion
 import ltypes as lt
 from dbg import *
 
-def dbgEntry(f):
-    def ff(*a):
-        dpr('Entering', f.__name__)
-        ret = f(*a)
-        dpr('Exiting', f.__name__)
-        return ret
-    return ff
-    
+
 
 class MLtype:
     def isTypeVariable(self):
@@ -34,7 +27,9 @@ class MLtype:
         return typeDbgStr0(self)
     def __repr__(self):
         return str(self)
-        
+    def destructor(self, cx):
+        return None
+
 class VarType(MLtype):
     count = 0
     def __init__(self):
@@ -81,7 +76,11 @@ class Arrow(TypeConstructor(2)):
             self.llvm(cx.s), funcPtrType(self, cx), '%voidptr')
 
 class Product(TypeConstructor(2)): pass
-class Sum(TypeConstructor(2)): pass
+class Sum(TypeConstructor(2)):
+    def llvm(self, cx):
+        return lt.Union(t.llvm(cx) for t in self.parms)
+    def destructor(self, cx):
+    
 class Unit(TypeConstructor(0)):
     def llvm(self, cx):
         return lt.Unit

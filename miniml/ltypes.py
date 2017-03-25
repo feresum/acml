@@ -31,12 +31,15 @@ class Aggregate(Ltype):
         self.name = '{' + ','.join(m.name for m in self.members) + '}'
 
 class Union(Ltype):
+    
     def __init__(self, members):
         self.members = tuple(members)
+        assert len(self.members) == 2
         self.align = max(m.align for m in self.members)
         self.size = align(max(m.size for m in self.members), self.align)
-        self.buf = Aggregate(self, self.size / self.align * [typeWithAlign[self.align]])
-        self.name = self.buf.name
+        self.buf = Aggregate(self.size / self.align * [typeWithAlign[self.align]])
+        self.type = Aggregate((i1, self.buf))
+        self.name = self.type.name
 
 i1 = Scalar('i1', 1, 1)
 i8 = Scalar('i8', 1, 1)
