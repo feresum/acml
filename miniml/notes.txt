@@ -1,3 +1,11 @@
+Type system: "A Theory of Type Polymorphism in Programming", Milner 1978
+https://courses.engr.illinois.edu/cs421/sp2013/project/milner-polymorphism.pdf
+difference between lambda and let variables:
+"The solution is fortunately straightforward. We decree that in instantiating the type of a variable bound by let or by letrec. only those type variables which do not occur in the types of enclosing λ-bindings (or formal parameter bindings) may be instantiated. We call such instantiable variables (in a generic type) generic type variables."
+
+let id = (fun x->x) in (id 3, id true) should be allowed
+let id = (fun x->x) (fun x->x) in (id 3, id true) is not allowed by Ocaml, but should be allowed...
+
 Type substitution maps should always be idempotent -- the set of keys should not intersect the set of values.
 Types should never be recursive when the substitution is ignored (that is, by going t.parms[..].parms[..].parms[..])
 

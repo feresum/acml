@@ -145,9 +145,9 @@ class BindingRef(Expr):
     def compile(self, cx, out):
         return lu.dup(cx.bindings[self.key()][-1], out, self.type.llvm(cx), cx)
 class LetBindingRef(BindingRef):
-    def __init__(self, var, subst):
+    def __init__(self, var, subst, nongeneric):
         self.var = var
-        self.type = types.duplicate(var.type, subst)
+        self.type = types.duplicate(var.type, subst, nongeneric)
     def key(self):
         return self.type
 

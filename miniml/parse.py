@@ -20,6 +20,7 @@ class Parser:
         self.tl = tokens[::-1]
         self.bindings = {}
         self.subst = subst
+        self.lambdaTypes = set()
 
     def bind(self, name, var):
         self.bindings.setdefault(name, []).append(var)
@@ -42,6 +43,7 @@ class Parser:
     def fun_f(self):
         pname = self.tl.pop().name
         var = LambdaVar()
+        self.lambdaTypes.add(var.type)
         attrs = set()
         while self.tl[-1].startswith('@'):
             attrs.add(self.tl.pop()[1:])
@@ -51,6 +53,7 @@ class Parser:
         self.unbind(pname)
         ret = Lambda(var, x)
         ret.attrs = attrs
+        self.lambdaTypes.remove(var.type)
         return ret
         
     def let_f(self):
@@ -134,7 +137,7 @@ class Parser:
         self.tl.pop()
         var = self.bindings[name][-1]
         if isinstance(var, LetVar):
-            ref = LetBindingRef(var, self.subst)
+            ref = LetBindingRef(var, self.subst, self.lambdaTypes)
             var.instantiatedTypes.add(ref.type)
             return ref
         else:

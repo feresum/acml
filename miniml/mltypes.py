@@ -80,6 +80,7 @@ class Sum(TypeConstructor(2)):
     def llvm(self, cx):
         return lt.Union(t.llvm(cx) for t in self.parms)
     def destructor(self, cx):
+        pass
     
 class Unit(TypeConstructor(0)):
     def llvm(self, cx):
@@ -445,10 +446,12 @@ def duplicate(t, subst): # replace free vars with new ones
     typeDbgStr0(d(t))
     return d(t)
     
-def duplicate(t, subst):
+def duplicate(t, subst, nongeneric=set()):
     tv = {}
     def d(t):
         if t.isTypeVariable():
+            if t in nongeneric:
+                return t
             if t not in tv:
                 tv[t] = VarType()
                 if subst[t] != t:

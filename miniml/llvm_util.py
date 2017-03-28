@@ -43,7 +43,7 @@ class CompileContext:
     def useBuiltin(self, f):
         self.builtins.add(f)
     def getDestructor(self, mtype):
-        
+        pass
     def local(self):
         self.id += 1
         return '%r' + str(self.id)
@@ -131,4 +131,4 @@ def structGEP(addr, ltype, out, *ind):
     return [s]
     
 def store(type, value, addr):
-    return 'store %s %s, %s* %s' % (type, value, type addr)
+    return 'store %s %s, %s* %s' % (type, value, type, addr)
