@@ -1,6 +1,7 @@
 import mltypes as types
 from mltypes import VarType
 import llvm_util as lu
+import llvm_instructions as inst
 from dbg import *
 
 class Expr:
@@ -225,3 +226,17 @@ class IntegralLiteral(Expr):
         self.type = type
     def compile(self, cx, out):
         return ['%s = add %s 0, %d' % (out, self.type.llvm(cx), self.value)]
+
+class Product(Expr):
+    def __init__(self, fst, snd):
+        self.fst = fst
+        self.snd = snd
+        self.type = types.Product(fst.type, snd.type)
+    def children(self):
+        return [self.fst, self.snd]
+    def compile(self, cx, out):
+        ltype = self.type.llvm(cx)
+        fst, snd, r = cx.local(), cx.local(), cx.local()
+        return self.fst.compile(cx, fst) + self.snd.compile(cx, snd) + [
+            inst.insertvalue(ltype, 'undef', self.fst.type.llvm(cx), fst, r, 0),
+            inst.insertvalue(ltype, r, self.snd.type.llvm(cx), snd, out, 1)]

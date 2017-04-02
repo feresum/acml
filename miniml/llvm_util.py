@@ -1,6 +1,7 @@
 from sys import stderr
 from collections import ChainMap
 import ltypes as lt
+import memory as mem
 
 
 unit_value = '%Unit undef'
@@ -133,14 +134,11 @@ def funcObjClosure(fobj, mtype, cx, out):
 
 def closureType(mtypes, cx):
     return lt.Aggregate(t.llvm(cx) for t in mtypes)
-
-def appendRefcount(ltype):
-    return lt.Aggregate((ltype, cx.size_t))
     
 def heapCreate(ltype, value, cx, out):
     p = cx.local()
     cx.useBuiltin('~malloc')
-    rctype = appendRefcount(ltype)
+    rctype = mem.rctype(ltype)
     return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, rctype.size),
             '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
             'store %s %s, %s* %s' % (ltype, value, ltype, out)]
@@ -157,5 +155,11 @@ def store(type, value, addr):
 def extractProductElement(mtype, p, ind, cx, out):
     return ['%s = extractvalue %s %s, %d' % (out, mtype.llvm(cx), p, ind)]
     
-def getSumIndex(mtype, s, cx, out):
-    return structGEP(s, mtype.llvm(cx), out, 1
+def getSumTypeSelector(s, cx, out):
+    return [load('i1', s, out)]
+    
+def formatFunctionDef(signature, lines):
+    s = 'define ' + signature + '\n{\n'
+    for l in lines:
+        s += '\t' + l + '\n'
+    return s + '}\n'

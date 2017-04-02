@@ -11,6 +11,7 @@
 import mltypes as types
 import ltypes as lt
 import llvm_util as lu
+import llvm_instructions as inst
 
 class StorageType:
     VALUE = 'by value'
@@ -62,8 +63,9 @@ class ClosureRef(Ref):
 def rctype(ltype, cx):
     return lt.Aggregate((cx.size_t, ltype))
 def getPtrToRefcount(addr, ltype, cx, out):
-    rct = rctype(ltype, cx)
-    return lu.structGEP(addr, rct, out, 0)
+    sizeptr = cx.local()
+    return [inst.bitcast(ltype, cx.size_t, addr, sizeptr),
+    '%s = getelementptr %%size_t,%%size_t* %s, %%size_t -1' % (out, sizeptr)]
     
 def heapRefcountIncrement(addr, ltype, cx):
     p, count, plus1 = cx.local(), cx.local(), cx.local()
@@ -80,10 +82,10 @@ def heapRefcountDecrement(addr, mtype, cx):
     return getPtrToRefcount(addr, ltype, cx, p) + [
         '%s = load %%size_t* %s' % (count, p),
         '%s = sub nuw %%size_t %s, 1' % (minus1, count),
-        '%s = icmp eq %%size_t 0, %s' % (isZero, minus1)
+        '%s = icmp eq %%size_t 0, %s' % (isZero, minus1),
         'br i1 %s, label %%%s, label %%%s' % (isZero, destroy, after),
         destroy + ':',
-        'call void %s(%s* %s)' % (cx.getDestructor(mtype), rctype, addr)
+        'call void %s(%s* %s)' % (cx.getDestructor(mtype), rctype, addr),
         'br label %' + after,
         decr + ':',
         store('%size_t', minus1, p),

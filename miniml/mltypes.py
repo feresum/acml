@@ -78,12 +78,12 @@ class Arrow(TypeConstructor(2)):
 
 class Product(TypeConstructor(2)):
     def llvm(self, cx):
-        return lt.Aggregate(self.parms)
+        return lt.Aggregate(p.llvm(cx) for p in self.parms)
     def destructorBody(self, cx):
         o = []
         for i in 0, 1:
             r = cx.local()
-            o += lu.extractSumElement(self, '%object', i, cx, r)
+            o += lu.extractProductElement(self, '%object', i, cx, r)
             o += memory.unreference(r, self.parms[i], cx)
         return o
     
@@ -91,7 +91,7 @@ class Sum(TypeConstructor(2)):
     def llvm(self, cx):
         return lt.Pointer(lt.i1, cx)
     def destructorBody(self, cx):
-        
+        pass
     
 class Unit(TypeConstructor(0)):
     def llvm(self, cx):
@@ -477,9 +477,7 @@ def canonicalStr(t, subst):
     def cstr(t):
         t = subst[t]
         for u in numbering:
-            #dpr('eq?', t, u, subst)
             if equivalent(t, u, subst):
-                #dpr('yes')
                 return numbering[u]
         numbering[t] = "'" + str(len(numbering))
         if t.isTypeVariable():

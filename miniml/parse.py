@@ -76,7 +76,7 @@ class Parser:
     
     def ifthen(self):
         if self.tl[-1] != 'if':
-            return self.application()
+            return self.product()
         self.tl.pop()
         cond = self.ifthen()
         self.unify(cond.type, types.Bool)
@@ -91,6 +91,15 @@ class Parser:
             ret = If2(cond, xTrue)
             self.unify(xTrue.type, types.Unit())
         return ret
+
+    def product(self):
+        x = self.application()
+        if self.tl[-1] != ',':
+            return x
+        self.tl.pop()
+        y = self.product()
+        dpr(x, y)
+        return Product(x, y)#self.product())
 
     def application(self):
         x = self.paren()
