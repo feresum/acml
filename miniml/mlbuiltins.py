@@ -26,3 +26,4 @@ define %Unit @mlputchar(%voidptr, %Char %c)
 ''')
 
 reg('~malloc', None, 'declare %voidptr @malloc(%size_t)')
+reg('~free', None, 'declare void @free(%voidptr)')

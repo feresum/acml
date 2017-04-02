@@ -37,13 +37,28 @@ class CompileContext:
         self.funcTypeDeclarations = {}
         self.destructors = {}
         self.lambdaDefinitions = []
+        self.destructorDefinitions = []
         self.s = ChainMap(key_defaultdict())
         self.size_t = size_tMap[bitness]
         self.voidptr = lt.Scalar('%voidptr', self.size_t.size, self.size_t.align)
     def useBuiltin(self, f):
         self.builtins.add(f)
     def getDestructor(self, mtype):
-        pass
+        ltype = str(mtype.llvm(self))
+        if ltype in self.destructors:
+            return self.destructors[ltype]
+        name = self.destructor()
+        self.destructors[ltype] = name
+        self.useBuiltin('~free')
+        dbody = mtype.destructorBody(self)
+        destructor = 'define void %s(%s* %%object)\n{\n' % (name, ltype)
+        for line in dbody + ['%%ptr = bitcast %s* %%object to %%voidptr' % ltype,
+                             'call void @free(%voidptr %ptr)',
+                             'ret void']:
+            destructor += '\t' + line + '\n'
+        destructor += '}\n'
+        self.destructorDefinitions.append(destructor)
+        return name
     def local(self):
         self.id += 1
         return '%r' + str(self.id)
@@ -56,6 +71,9 @@ class CompileContext:
     def func(self):
         self.id += 1
         return '%func' + str(self.id)
+    def destructor(self):
+        self.id += 1
+        return '%destroy' + str(self.id)
     def compile(self, expr):
         from mlbuiltins import definition
         compiled = expr.compile(self, self.local())
@@ -116,11 +134,14 @@ def funcObjClosure(fobj, mtype, cx, out):
 def closureType(mtypes, cx):
     return lt.Aggregate(t.llvm(cx) for t in mtypes)
 
-
+def appendRefcount(ltype):
+    return lt.Aggregate((ltype, cx.size_t))
+    
 def heapCreate(ltype, value, cx, out):
     p = cx.local()
     cx.useBuiltin('~malloc')
-    return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, ltype.size),
+    rctype = appendRefcount(ltype)
+    return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, rctype.size),
             '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
             'store %s %s, %s* %s' % (ltype, value, ltype, out)]
 
@@ -132,3 +153,9 @@ def structGEP(addr, ltype, out, *ind):
     
 def store(type, value, addr):
     return 'store %s %s, %s* %s' % (type, value, type, addr)
+
+def extractProductElement(mtype, p, ind, cx, out):
+    return ['%s = extractvalue %s %s, %d' % (out, mtype.llvm(cx), p, ind)]
+    
+def getSumIndex(mtype, s, cx, out):
+    return structGEP(s, mtype.llvm(cx), out, 1

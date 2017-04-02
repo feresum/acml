@@ -2,6 +2,7 @@ from collections import ChainMap
 from llvm_util import funcPtrType, key_defaultdict
 from typeunion import TypeUnion
 import ltypes as lt
+import memory
 from dbg import *
 
 
@@ -27,8 +28,8 @@ class MLtype:
         return typeDbgStr0(self)
     def __repr__(self):
         return str(self)
-    def destructor(self, cx):
-        return None
+    def destructorBody(self, cx):
+        return []
 
 class VarType(MLtype):
     count = 0
@@ -75,12 +76,22 @@ class Arrow(TypeConstructor(2)):
         cx.funcTypeDeclarations[self] = 'type %s = {%s, %s}' % (
             self.llvm(cx.s), funcPtrType(self, cx), '%voidptr')
 
-class Product(TypeConstructor(2)): pass
+class Product(TypeConstructor(2)):
+    def llvm(self, cx):
+        return lt.Aggregate(self.parms)
+    def destructorBody(self, cx):
+        o = []
+        for i in 0, 1:
+            r = cx.local()
+            o += lu.extractSumElement(self, '%object', i, cx, r)
+            o += memory.unreference(r, self.parms[i], cx)
+        return o
+    
 class Sum(TypeConstructor(2)):
     def llvm(self, cx):
-        return lt.Union(t.llvm(cx) for t in self.parms)
-    def destructor(self, cx):
-        pass
+        return lt.Pointer(lt.i1, cx)
+    def destructorBody(self, cx):
+        
     
 class Unit(TypeConstructor(0)):
     def llvm(self, cx):
@@ -394,8 +405,6 @@ def unify_inplace(a, b, bind):
         dpr(t, tu[t])
         if t.isTypeVariable():
             bind[t] = tu[t]
-    if canonicalStr(a, bind).count('0') >= 3:
-        __import__('pdb').set_trace()
             
             
 def unifyN(*a):

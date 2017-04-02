@@ -1,4 +1,6 @@
-# For now, closures, directly recursive types and sum types will use heap pointers; other types by value.
+# For now, closures and sum types will use heap pointers; other types by value.
+# Storing sum types and nothing else as pointers knocks out recursive types and the inconvenient
+#  need for bitcasting at once for easiest implementation.
 # When a heap object is created, have refcount be 1, owned by the current stack frame.
 # Increment in a function if it intends to return an object.
 # Increment when another heap object creates a pointer to the object.
@@ -74,7 +76,7 @@ def heapRefcountDecrement(addr, mtype, cx):
     ltype = mtype.llvm(cx)
     rctype = rctype(ltype, cx)
     p, count, minus1, isZero = cx.local(), cx.local(), cx.local(), cx.local()
-    destroy, after = cx.label(), cx.label()
+    destroy, decr, after = cx.label(), cx.label(), cx.label()
     return getPtrToRefcount(addr, ltype, cx, p) + [
         '%s = load %%size_t* %s' % (count, p),
         '%s = sub nuw %%size_t %s, 1' % (minus1, count),
@@ -83,7 +85,18 @@ def heapRefcountDecrement(addr, mtype, cx):
         destroy + ':',
         'call void %s(%s* %s)' % (cx.getDestructor(mtype), rctype, addr)
         'br label %' + after,
+        decr + ':',
+        store('%size_t', minus1, p),
+        'br label %' + after,
         after + ':'
     ]
     
+def unreference(v, mtype, cx):
+    if canonicalStorage(mtype, cx.s) is StorageType.POINTER:
+        return heapRefcountDecrement(v, mtype, cx)
+    return []
     
+def reference(v, mtype, cx):
+    if canonicalStorage(mtype, cx.s) is StorageType.POINTER:
+        return heapRefcountIncrement(v, mtype, cx)
+    return []

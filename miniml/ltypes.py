@@ -13,6 +13,13 @@ class Scalar(Ltype):
         self.name = name
         self.size = size
         self.align = align
+class Pointer(Ltype):
+    def __init__(self, pointee, cx):
+        self.pointee = pointee
+        self.name = pointee.name + '*'
+        self.size = cx.voidptr.size
+        self.align = cx.voidptr.align
+
 class Funcptr(Ltype):
     def __init__(self, name, cx):
         self.name = name

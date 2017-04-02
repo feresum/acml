@@ -188,9 +188,6 @@ class Application(Expr):
         argCode = self.argument.compile(cx, argReg)
         fptr, cl = cx.local(), cx.local()
         ftype = cx.s[self.function.type]
-        dpr('ftype', types.typeDbgStr(ftype,cx.s))
-        dpr('argtype', types.typeDbgStr(ftype.argument(),cx.s))
-        dpr('result', types.typeDbgStr(ftype.result(),cx.s))
         return funcCode + argCode + \
             lu.funcObjFunction(funcReg, ftype, cx, fptr) + \
             lu.funcObjClosure(funcReg, ftype, cx, cl) + \
