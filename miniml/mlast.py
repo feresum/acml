@@ -39,7 +39,9 @@ class Lambda(Expr):
         return self.reduce(lambda n, rc: [(n.key(), n.type)] if isinstance(n, BindingRef) else sum(rc, []))
     def compile(self, cx, out):
         name = cx.lamb()
-        cv = [(k,t) for (k,t) in self.closedVars() if k in cx.bindings]
+        dpr('lamba type', self.type.llvm(cx), types.canonicalStr(self.type, cx.s))
+        zz = types.canonicalStr(self.type, cx.s)
+        cv = [(k,t) for (k,t) in set(self.closedVars()) if k in cx.bindings]
         cx.bindings[self.var] = ['%arg']
         retLtype = self.type.result().llvm(cx)
         fdef = 'define %s %s(%%voidptr %%cl0, %s %%arg)\n{' % (retLtype, name,
@@ -49,9 +51,8 @@ class Lambda(Expr):
         if cv:
             clTypes = list(zip(*cv))[1]
             clType = lu.closureType(clTypes, cx)
-            dpr('clty',clTypes,clType)
             loadClosure = ['%%clPtr = bitcast %%voidptr %%cl0 to %s*' % clType,
-                           '%%cl = load %s* %%clPtr' % clType]
+                           inst.load(clType, '%clPtr', '%cl')]
             clTypedPtr, clPtr = cx.local(), cx.local() 
             storeClosure = []
             builder = 'undef'
@@ -91,7 +92,6 @@ class LetBinding(Expr):
         # (and not do them at all if there are 0 instantiations!)
         code = []
         for t in self.var.instantiatedTypes:
-            dpr('idt', id(t), t, types.typeDbgStr(t, cx.s), types.canonicalStr(t, cx.s))
             valueReg = cx.local()
             cx.bindings[t] = [valueReg]
             cx.s = cx.s.new_child()
@@ -239,4 +239,4 @@ class Product(Expr):
         fst, snd, r = cx.local(), cx.local(), cx.local()
         return self.fst.compile(cx, fst) + self.snd.compile(cx, snd) + [
             inst.insertvalue(ltype, 'undef', self.fst.type.llvm(cx), fst, r, 0),
-            inst.insertvalue(ltype, r, self.snd.type.llvm(cx), snd, out, 1)]
+            inst.insertvalue(ltype, r, self.snd.type.llvm(cx), snd, out, 1) + ';prod']

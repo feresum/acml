@@ -44,6 +44,9 @@ class Parser:
         pname = self.tl.pop().name
         var = LambdaVar()
         self.lambdaTypes.add(var.type)
+        # I have no idea what I'm doing
+        #ngExtra = {v for v in types.freeVariables(var.type, self.subst) if v not in self.lambdaTypes}
+        #self.lambdaTypes |= ngExtra
         attrs = set()
         while self.tl[-1].startswith('@'):
             attrs.add(self.tl.pop()[1:])
@@ -54,6 +57,7 @@ class Parser:
         ret = Lambda(var, x)
         ret.attrs = attrs
         self.lambdaTypes.remove(var.type)
+        #self.lambdaTypes -= ngExtra
         return ret
         
     def let_f(self):
@@ -106,12 +110,8 @@ class Parser:
         while True:
             try:
                 x2 = self.paren()
-                dpr('arg', types.canonicalStr(x2.type, self.subst))
                 x = Application(x, x2)
-                dpr('before', types.typeDbgStr(x.function.type, self.subst))
-                dpr('befor2', types.canonicalStr(x.function.type, self.subst))
                 self.unify(x.function.type, types.Arrow(x.argument.type, x.type))
-                dpr('after', types.typeDbgStr(x.function.type, self.subst))
             except ParseException:
                 return x
                 

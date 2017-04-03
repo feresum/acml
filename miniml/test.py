@@ -1,40 +1,57 @@
-
 import parse, llvm_util, mltypes as t, ltypes as lt
+import pdb, bdb
+from llvm_instructions import versionSyntaxReplace
 
-# a1=t.VarType()
-# class U(t.TypeConstructor(1)): pass
-# s = {a1: U(a1)}
-# s=llvm_util.key_defaultdict(s)
 
-# t.canonicalStr(a1, s)
+def shouldFailTypeCheck(code):
+    cx = llvm_util.CompileContext(64)
+    try:
+        parse.parse(code, cx)
+    except t.TypesNotUnifiable:
+        return
+    assert False
+    
+def shouldCompile(code):
+    cx = llvm_util.CompileContext(64)
+    cx.compile(parse.parse(code, cx))
+    
+def shouldWork():
+    sftc = shouldFailTypeCheck
+    sc = shouldCompile
+    sc('5, true, false, _builtin(char)')
+    sc('if true then 1 else 2')
+    sftc('if true then 1 else true')
+    sftc('if 1 then 1 else 1')
+    sc('let id = fun x->x in (id 3, id true)')
+    sftc('(fun id -> (id 3, id true) ) (fun x -> x)')
+    sc('let id = (fun x->x) (fun x->x) in (id 3, id true)')
+    sftc('fun f -> let g = fun x -> f x in (g 3, g true)')
+    #pdb.set_trace()
+    sc(''' ( fun f ->
+            let r = (fun rr -> fun lol ->
+                rr rr (f (_builtin(char) 99) )
+            ) in r  r 1234
+        )  _builtin(ml_putchar)''')
+    sc(''' ( fun f ->
+            let r = (fun rr -> fun lol ->
+                rr  rr (f (_builtin(char) 99) )
+            ) in r  r 1234
+        )  _builtin(ml_putchar)''')
+    
+    
+    
+try: shouldWork()
+except: pdb.post_mortem()
 
 
 cx = llvm_util.CompileContext(64)
 
+lib = open('stdlib.miniml').read()
+p = input()
 
-a,b,c,d=[t.VarType()for _ in 'hhhh']
-# s=llvm_util.key_defaultdict()
-# s=dict()
-# s[a]=t.Arrow(a,b)
-# s[c]=t.Arrow(c,d)
-# #t.unify(a,c,s)
-
-
-class F(t.TypeConstructor(3)): pass
-class G(t.TypeConstructor(2)): pass
-
-x = F(G(c, d), a, c)
-y = F(G(a, b), G(a, b), G(c, d))
-t.unify(x, y)
-
-
-
-id1 = t.Arrow(a, a)
-id2 = t.Arrow(b, b)
-s = llvm_util.key_defaultdict()
-s[b] = id1
-
-#print(t.canonicalStr(id2, s))
-
-print(cx.compile(parse.parse(input(), cx)))
-
+try:
+    code = cx.compile(parse.parse(lib + p, cx))
+    code = versionSyntaxReplace((3, 9), code)
+    print(code)
+except:
+    pdb.post_mortem()

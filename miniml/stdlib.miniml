@@ -1,0 +1,10 @@
+let char = _builtin(char) in
+let putchar = _builtin(ml_putchar) in
+
+let expand_product_arg = fun f ->
+    fun x -> fun y -> f (x, y)
+in
+let ineg = _builtin(integer_negate) in
+let iadd = expand_product_arg _builtin(integer_add) in
+let ilt = expand_product_arg _builtin(integer_less) in
+let ieq = expand_product_arg _builtin(integer_equal) in

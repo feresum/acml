@@ -62,16 +62,13 @@ class Arrow(TypeConstructor(2)):
     def result(self):
         return self.parms[1]
     def llvm(self, cx):
-        
         cstr = canonicalStr(self, cx.s)
         if cstr not in cx.funcTypeDeclarations:
-            dpr('new type', cstr)
-            
             func = cx.func()
             cx.funcTypeDeclarations[cstr] = (func,)
             cx.funcTypeDeclarations[cstr] = (func,
                 'type {%s, %s}' % (funcPtrType(self, cx), '%voidptr'))
-        return cx.funcTypeDeclarations[cstr][0]
+        return lt.Funcptr(cx.funcTypeDeclarations[cstr][0], cx)
     def register(self, cx):
         cx.funcTypeDeclarations[self] = 'type %s = {%s, %s}' % (
             self.llvm(cx.s), funcPtrType(self, cx), '%voidptr')
@@ -171,7 +168,7 @@ def typeDbgStr(t, subst):
     
 
 def freeVariables(t, subst):
-    seen = {}
+    seen = set()
     free = []
     def search(t):
         t = subst[t]
@@ -182,6 +179,7 @@ def freeVariables(t, subst):
         else:
             for u in t.parms:
                 search(u)
+    search(t)
     return free
 
 # https://inst.eecs.berkeley.edu/~cs164/sp11/lectures/lecture22.pdf  p. 9
@@ -302,8 +300,6 @@ def unify_inplace(a, b, bind0):
     bind = ChainMap({}, bind0)
     def unify_r(a, b):
         ua, ub = bind[a], bind[b]
-        dpr(ua,ub)
-        dpr(bind)
         if ua is ub: return
         if ua.isTypeVariable() and a is ua:
             bind0[ua] = ub
@@ -402,7 +398,6 @@ def unify_inplace(a, b, bind):
             unify_(x, y)
     unify_(a, b)
     for t in tu:
-        dpr(t, tu[t])
         if t.isTypeVariable():
             bind[t] = tu[t]
             
@@ -456,6 +451,9 @@ def duplicate(t, subst): # replace free vars with new ones
     return d(t)
     
 def duplicate(t, subst, nongeneric=set()):
+    # dpr('ng0', nongeneric)
+    nongeneric = {v for u in nongeneric for v in freeVariables(u, subst)}
+    # dpr('ng1', nongeneric)
     tv = {}
     def d(t):
         if t.isTypeVariable():
@@ -477,7 +475,7 @@ def canonicalStr(t, subst):
     def cstr(t):
         t = subst[t]
         for u in numbering:
-            if equivalent(t, u, subst):
+            if t is u if t.isTypeVariable() else equivalent(t, u, subst):
                 return numbering[u]
         numbering[t] = "'" + str(len(numbering))
         if t.isTypeVariable():

@@ -111,6 +111,7 @@ def storeField(structAddr, structLtype, fieldIndex, fieldLtype, cx, value):
 
 def dup(ra, rb, ltype, cx):
     wat = cx.local()
+    #if wat=='%r197':import pdb;pdb.set_trace()
     return ['%s = insertvalue {%s} undef, %s %s, 0 ;nop' % (wat, ltype, ltype, ra),
             '%s = extractvalue {%s} %s, 0 ;nop' % (rb, ltype, wat)]
 
@@ -138,7 +139,7 @@ def closureType(mtypes, cx):
 def heapCreate(ltype, value, cx, out):
     p = cx.local()
     cx.useBuiltin('~malloc')
-    rctype = mem.rctype(ltype)
+    rctype = mem.rctype(ltype, cx)
     return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, rctype.size),
             '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
             'store %s %s, %s* %s' % (ltype, value, ltype, out)]
