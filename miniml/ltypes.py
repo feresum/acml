@@ -20,10 +20,10 @@ class Pointer(Ltype):
         self.size = cx.voidptr.size
         self.align = cx.voidptr.align
 
-class Funcptr(Ltype):
+class FuncptrWithClosure(Ltype):
     def __init__(self, name, cx):
         self.name = name
-        self.size = cx.voidptr.size
+        self.size = cx.voidptr.size * 2
         self.align = cx.voidptr.align
 class Aggregate(Ltype):
     def __init__(self, members):

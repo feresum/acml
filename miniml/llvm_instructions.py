@@ -17,6 +17,9 @@ def sub_nsw(type, x, y, out):
     return '%s = sub nsw %s %s, %s' % (out, type, x, y)
 def load(type, ptr, out):
     return '%s = load %s* %s' % (out, type, ptr)
+def store(type, value, addr):
+    return 'store %s %s, %s* %s' % (type, value, type, addr)
+    
     
 def versionSyntaxReplace(ver, code):
     # versions are not accurate
@@ -28,3 +31,12 @@ def versionSyntaxReplace(ver, code):
             code = re.sub(pattern, repl, code)
     return code
     
+def branch(*a):
+    if len(a) == 1:
+        return 'br label ' + a[0]
+    cond, trueLbl, falseLbl = a
+    return 'br i1 %s, label %%%s, label%%%s' % (cond, trueLbl, falseLbl)
+def label(name):
+    return name + ':'
+def phi(type, out, *valueLabelPairs):
+    return '%s = phi %s ' % (out, type) + ', '.join('[ %s, %%%s ]' % vl for vl in valueLabelPairs)

@@ -2,6 +2,7 @@ from sys import stderr
 from collections import ChainMap
 import ltypes as lt
 import memory as mem
+import llvm_instructions as inst
 
 
 unit_value = '%Unit undef'
@@ -132,17 +133,28 @@ def funcObjFunction(fobj, mtype, cx, out):
 def funcObjClosure(fobj, mtype, cx, out):
     return ['%s = extractvalue %s %s, 1' % (out, mtype.llvm(cx), fobj)]
     
-
+def formAggregate(ltype, cx, out, *members):
+    assert(len(ltype.members) == len(members))
+    r = 'undef'
+    code = []
+    for i, (t, m) in enumerate(zip(ltype.members, members)):
+        r2 = cx.local()
+        code.append(inst.insertvalue(ltype, r, t, m, r2, i))
+        r = r2
+    return code + dup(r, out, ltype, cx)
 def closureType(mtypes, cx):
     return lt.Aggregate(t.llvm(cx) for t in mtypes)
     
+
 def heapCreate(ltype, value, cx, out):
-    p = cx.local()
+    voidp, rcp, rcval = cx.local(), cx.local(), cx.local()
     cx.useBuiltin('~malloc')
     rctype = mem.rctype(ltype, cx)
-    return ['%s = call %%voidptr @malloc(%%size_t %d)' % (p, rctype.size),
-            '%s = bitcast %%voidptr %s to %s*' % (out, p, ltype),
-            'store %s %s, %s* %s' % (ltype, value, ltype, out)]
+    return formAggregate(rctype, cx, rcval, 1, value) + [
+           '%s = call %%voidptr @malloc(%%size_t %d)' % (voidp, rctype.size),
+           inst.bitcast('%voidptr', rctype, voidp, rcp),
+           inst.store(rctype, rcval, rcp)
+           ] + structGEP(rcp, rctype, out, 1)
 
 def structGEP(addr, ltype, out, *ind):
     s = '%s = getelementpointer inbounds %s,%s* %s, i32 0' % (out, ltype, ltype, addr)
@@ -151,7 +163,7 @@ def structGEP(addr, ltype, out, *ind):
     return [s]
     
 def store(type, value, addr):
-    return 'store %s %s, %s* %s' % (type, value, type, addr)
+    return inst.store(type, value, addr)
 
 def extractProductElement(mtype, p, ind, cx, out):
     return ['%s = extractvalue %s %s, %d' % (out, mtype.llvm(cx), p, ind)]
@@ -159,8 +171,18 @@ def extractProductElement(mtype, p, ind, cx, out):
 def getSumTypeSelector(s, cx, out):
     return [load('i1', s, out)]
     
+def sumSideType(msum, side, cx):
+    return lt.Aggregate((lt.i1, msum.parms[side].llvm(cx)))
+    
 def formatFunctionDef(signature, lines):
     s = 'define ' + signature + '\n{\n'
     for l in lines:
         s += '\t' + l + '\n'
     return s + '}\n'
+    
+def conditionalValue(cond, type, trueBlock, trueReg, falseBlock, falseReg, cx, out):
+    tLbl, fLbl, rejoin = cx.label(), cx.label(), cx.label()
+    return [inst.branch(cond, tLbl, fLbl), inst.label(tLbl)] + trueBlock + [inst.branch(rejoin),
+        inst.label(fLbl)] + falseBlock + [inst.branch(rejoin), inst.phi(type, out, (trueReg, tLbl), (falseReg, fLbl))]
+           
+        

@@ -19,6 +19,9 @@ def shouldWork():
     sftc = shouldFailTypeCheck
     sc = shouldCompile
     sc('5, true, false, _builtin(char)')
+    sc('<3|')
+    sc('>fun x->x|')
+    sc('switch(<3| : l -> 9 | r -> 5)')
     sc('if true then 1 else 2')
     sftc('if true then 1 else true')
     sftc('if 1 then 1 else 1')
@@ -50,8 +53,9 @@ lib = open('stdlib.miniml').read()
 p = input()
 
 try:
-    code = cx.compile(parse.parse(lib + p, cx))
-    code = versionSyntaxReplace((3, 9), code)
+    ast = parse.parse(lib + p, cx)
+    code = cx.compile(ast)
+    code = versionSyntaxReplace((3, 6, 2), code)
     print(code)
 except:
     pdb.post_mortem()

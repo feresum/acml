@@ -68,7 +68,7 @@ class Arrow(TypeConstructor(2)):
             cx.funcTypeDeclarations[cstr] = (func,)
             cx.funcTypeDeclarations[cstr] = (func,
                 'type {%s, %s}' % (funcPtrType(self, cx), '%voidptr'))
-        return lt.Funcptr(cx.funcTypeDeclarations[cstr][0], cx)
+        return lt.FuncptrWithClosure(cx.funcTypeDeclarations[cstr][0], cx)
     def register(self, cx):
         cx.funcTypeDeclarations[self] = 'type %s = {%s, %s}' % (
             self.llvm(cx.s), funcPtrType(self, cx), '%voidptr')

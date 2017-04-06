@@ -97,8 +97,6 @@ class LetBinding(Expr):
             cx.s = cx.s.new_child()
             types.unify_inplace(t, self.var.type, cx.s)
             code += self.value.compile(cx, valueReg)
-            # lt = t.llvm(cx)
-            # t.llvm = lambda _: lt # lol
             cx.s = cx.s.parents
         ret = code + self.expr.compile(cx, out)
         for t in self.var.instantiatedTypes:
@@ -240,3 +238,38 @@ class Product(Expr):
         return self.fst.compile(cx, fst) + self.snd.compile(cx, snd) + [
             inst.insertvalue(ltype, 'undef', self.fst.type.llvm(cx), fst, r, 0),
             inst.insertvalue(ltype, r, self.snd.type.llvm(cx), snd, out, 1) + ';prod']
+
+class SumConstructor(Expr):
+    def __init__(self, side, expr):
+        self.side = side
+        self.expr = expr
+        self.type = types.Sum(*(expr.type, VarType())[::(-1)**side])
+    def children(self):
+        return [self.expr]
+    def compile(self, cx, out):
+        expr, tagged, ptr = cx.local(), cx.local(), cx.local()
+        sideType = lu.sumSideType(self.type, self.side, cx)
+        return self.expr.compile(cx, expr) + \
+            lu.formAggregate(sideType, cx, tagged, self.side, expr) \
+             + lu.heapCreate(sideType, tagged, cx, ptr) + [
+            inst.bitcast('%s*' % sideType, self.type.llvm(cx), ptr, out)]
+            
+        
+class SumProjection(Expr):
+    def __init__(self, sumExpr, side):
+        self.type = sumExpr.type.parms[side]
+        self.expr = sumExpr
+    def compile(self, cx, out):
+        psum, pside = cx.local()
+        tp = self.type.llvm(cx)
+        return expr.compile(cx, psum) + [
+            inst.bitcast('i1*', lt.Pointer(tp), psum, pside),
+            inst.load(tp, psum, out)]
+            
+class SumSide(Expr):
+    def __init__(self, sumExpr):
+        self.type = types.Bool
+        self.expr = sumExpr
+    def compile(self, cx, out):
+        sum = cx.local()
+        return self.expr.compile(cx, sum) + [inst.load('i1', sum, out)]

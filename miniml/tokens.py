@@ -1,6 +1,6 @@
 import re
 
-kw = {'let', 'in', 'fun', 'if', 'then', 'else', 'true', 'false'}
+kw = {'let', 'in', 'fun', 'if', 'then', 'else', 'true', 'false', 'switch'}
 
 class Identifier:
     def __init__(self, name):
@@ -14,4 +14,4 @@ def tok(w):
     return w
     
 def tokenize(s):
-    return re.findall(r'\w+|[(),]|[^\w\s]+', s)
+    return re.findall(r'\w+|[(),<>|:]|[^\w\s]+', s)

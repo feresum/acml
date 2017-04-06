@@ -121,7 +121,40 @@ class Parser:
             x = self.expr()
             assert(self.tl.pop() == ')')
             return x
+        elif self.tl[-1] in ('<', '>'):
+            i = '<>'.find(self.tl.pop())
+            x = self.expr()
+            assert(self.tl.pop() == '|')
+            return SumConstructor(i, x)
+        elif self.tl[-1] == 'switch':
+            self.tl.pop()
+            return self.switch_f()
         return self.single()
+        
+    def switch_f(self):
+        assert(self.tl.pop() == '(')
+        sumExpr = self.expr()
+        assert(self.tl.pop() == ':')
+        sumType = types.Sum(types.VarType(), types.VarType())
+        self.unify(sumType, sumExpr.type)
+        temp = LetVar(sumType)
+        tempRef = lambda: LetBindingRef(temp, self.subst, self.lambdaTypes)
+        def letArrow(i):
+            name = self.tl.pop().name
+            var = LetVar(sumType.parms[i])
+            self.bind(name, var)
+            assert(self.tl.pop() == '->')
+            x = self.expr()
+            self.unbind(name)
+            return LetBinding(var, SumProjection(tempRef(), i), x)
+        left = letArrow(0)
+        assert(self.tl.pop() == '|')
+        self.unify(sumType.parms[0], left.type)
+        right = letArrow(1)
+        assert(self.tl.pop() == ')')
+        self.unify(sumType.parms[1], right.type)
+        self.unify(left.type, right.type)
+        return LetBinding(temp, sumExpr, If3(SumSide(tempRef()), right, left))
         
     def single(self):
         if self.tl[-1] == 'true':
