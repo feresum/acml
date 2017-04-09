@@ -32,7 +32,8 @@ class idempotent_dict(key_defaultdict):
 size_tMap = {32: lt.i32, 64: lt.i64}
 
 class CompileContext:
-    def __init__(self, bitness):
+    def __init__(self, bitness, llvmVersion=0):
+        self.llvmVersion = llvmVersion
         self.id = 0
         self.builtins = set()
         self.bindings = {}
@@ -53,13 +54,11 @@ class CompileContext:
         self.destructors[ltype] = name
         self.useBuiltin('~free')
         dbody = mtype.destructorBody(self)
-        destructor = 'define void %s(%s* %%object)\n{\n' % (name, ltype)
-        for line in dbody + ['%%ptr = bitcast %s* %%object to %%voidptr' % ltype,
-                             'call void @free(%voidptr %ptr)',
-                             'ret void']:
-            destructor += '\t' + line + '\n'
-        destructor += '}\n'
-        self.destructorDefinitions.append(destructor)
+        sig = 'void %s(%s* %%object)' % (name, ltype)
+        dbody += ['%%ptr = bitcast %s* %%object to %%voidptr' % ltype,
+                  'call void @free(%voidptr %ptr)',
+                  'ret void']
+        self.destructorDefinitions.append(formatFunctionDef(dbody, self.version))
         return name
     def local(self):
         self.id += 1
@@ -78,7 +77,7 @@ class CompileContext:
         return '%destroy' + str(self.id)
     def compile(self, expr):
         from mlbuiltins import definition
-        compiled = expr.compile(self, self.local())
+        compiled = expr.compile(self, self.local()) + [inst.ret()]
         out = initial_typedefs + '%%size_t = type %s\n\n' % self.size_t
         for b in self.builtins:
             out += definition[b]
@@ -87,10 +86,8 @@ class CompileContext:
         out += '\n\n'
         for l in self.lambdaDefinitions:
             out += l
-        out += '\ndefine void @ml_program()\n{\n'
-        for line in compiled + ['ret void']:
-            out += '\t' + line + '\n'
-        out += '}\n\ndefine i32 @main()\n{\n\tcall void @ml_program()\n\tret i32 0\n}\n'
+        out += '\n' + formatFunctionDef('void @ml_program()', compiled, self.llvmVersion)
+        out += '\n' + formatFunctionDef('i32 @main()', ['call void @ml_program()', 'ret i32 0'], self.llvmVersion)
         return out
     def warn(self, s):
         print('Warning:', s, file=stderr)
@@ -152,15 +149,10 @@ def heapCreate(ltype, value, cx, out):
     rctype = mem.rctype(ltype, cx)
     return formAggregate(rctype, cx, rcval, 1, value) + [
            '%s = call %%voidptr @malloc(%%size_t %d)' % (voidp, rctype.size),
-           inst.bitcast('%voidptr', rctype, voidp, rcp),
-           inst.store(rctype, rcval, rcp)
-           ] + structGEP(rcp, rctype, out, 1)
+           inst.bitcast('%voidptr', lt.Pointer(rctype, cx), voidp, rcp),
+           inst.store(rctype, rcval, rcp),
+           inst.structGEP(rcp, rctype, out, 1)]
 
-def structGEP(addr, ltype, out, *ind):
-    s = '%s = getelementpointer inbounds %s,%s* %s, i32 0' % (out, ltype, ltype, addr)
-    for i in ind:
-        s += ', i32 %d' % i
-    return [s]
     
 def store(type, value, addr):
     return inst.store(type, value, addr)
@@ -174,10 +166,10 @@ def getSumTypeSelector(s, cx, out):
 def sumSideType(msum, side, cx):
     return lt.Aggregate((lt.i1, msum.parms[side].llvm(cx)))
     
-def formatFunctionDef(signature, lines):
+def formatFunctionDef(signature, lines, version):
     s = 'define ' + signature + '\n{\n'
     for l in lines:
-        s += '\t' + l + '\n'
+        s += '\t' + inst.versionSyntaxReplace(l, version) + '\n'
     return s + '}\n'
     
 def conditionalValue(cond, type, trueBlock, trueReg, falseBlock, falseReg, cx, out):

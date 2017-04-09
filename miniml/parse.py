@@ -118,6 +118,9 @@ class Parser:
     def paren(self):
         if self.tl[-1] == '(':
             self.tl.pop()
+            if self.tl[-1] == ')':
+                self.tl.pop()
+                return UnitLiteral()
             x = self.expr()
             assert(self.tl.pop() == ')')
             return x
@@ -129,7 +132,22 @@ class Parser:
         elif self.tl[-1] == 'switch':
             self.tl.pop()
             return self.switch_f()
+        elif self.tl[-1] == '_fst':
+            self.tl.pop()
+            return self.productElement(0)
+        elif self.tl[-1] == '_snd':
+            self.tl.pop()
+            return self.productElement(1)
+        
         return self.single()
+        
+    def productElement(self, side):
+        assert(self.tl.pop() == '(')
+        x = self.expr()
+        assert(self.tl.pop() == ')')
+        prod = types.Product(VarType(), VarType())
+        self.unify(prod, x.type)
+        return ProductProjection(x, side, prod.parms[side])
         
     def switch_f(self):
         assert(self.tl.pop() == '(')
@@ -146,13 +164,11 @@ class Parser:
             assert(self.tl.pop() == '->')
             x = self.expr()
             self.unbind(name)
-            return LetBinding(var, SumProjection(tempRef(), i), x)
+            return LetBinding(var, SumProjection(tempRef(), i, sumType.parms[i]), x)
         left = letArrow(0)
         assert(self.tl.pop() == '|')
-        self.unify(sumType.parms[0], left.type)
         right = letArrow(1)
         assert(self.tl.pop() == ')')
-        self.unify(sumType.parms[1], right.type)
         self.unify(left.type, right.type)
         return LetBinding(temp, sumExpr, If3(SumSide(tempRef()), right, left))
         
@@ -169,6 +185,9 @@ class Parser:
             name = self.tl.pop().name
             assert(self.tl.pop() == ')')
             return NativeFunction(name, builtins.signature[name])
+        if self.tl[-1] == '_error':
+            self.tl.pop()
+            return ErrorExpr()
         try:
             if type(self.tl[-1]) is str and self.tl[-1].isdigit():
                 num = int(self.tl.pop(), 10)
@@ -180,7 +199,6 @@ class Parser:
         var = self.bindings[name][-1]
         if isinstance(var, LetVar):
             ref = LetBindingRef(var, self.subst, self.lambdaTypes)
-            var.instantiatedTypes.add(ref.type)
             return ref
         else:
             return LambdaBindingRef(var)

@@ -46,7 +46,7 @@ class Lambda(Expr):
         retLtype = self.type.result().llvm(cx)
         fdef = 'define %s %s(%%voidptr %%cl0, %s %%arg)\n{' % (retLtype, name,
             self.type.argument().llvm(cx))
-        
+        fsig = '%s %s(%%voidptr %%cl0, %s %%arg)' % (retLtype, name, self.type.argument().llvm(cx))
         
         if cv:
             clTypes = list(zip(*cv))[1]
@@ -70,10 +70,8 @@ class Lambda(Expr):
             loadClosure = storeClosure = []
             clPtr = 'null'
         fout = cx.local()
-        for line in loadClosure + self.expr.compile(cx, fout):
-            fdef += '\n\t' + line
-        fdef += '\n\tret %s %s\n}\n' % (retLtype, fout)
-        cx.lambdaDefinitions.append(fdef)
+        fbody = loadClosure + self.expr.compile(cx, fout) + [inst.ret(retLtype, fout)]
+        cx.lambdaDefinitions.append(lu.formatFunctionDef(fsig, fbody, cx.llvmVersion))
         del cx.bindings[self.var]
         for key, _ in cv:
             cx.bindings[key].pop()
@@ -147,6 +145,7 @@ class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
         self.type = types.duplicate(var.type, subst, nongeneric)
+        var.instantiatedTypes.add(self.type)
     def key(self):
         return self.type
 
@@ -256,15 +255,15 @@ class SumConstructor(Expr):
             
         
 class SumProjection(Expr):
-    def __init__(self, sumExpr, side):
-        self.type = sumExpr.type.parms[side]
+    def __init__(self, sumExpr, side, type):
+        self.type = type
         self.expr = sumExpr
     def compile(self, cx, out):
-        psum, pside = cx.local()
+        psum, pside = cx.local(), cx.local()
         tp = self.type.llvm(cx)
-        return expr.compile(cx, psum) + [
-            inst.bitcast('i1*', lt.Pointer(tp), psum, pside),
-            inst.load(tp, psum, out)]
+        return self.expr.compile(cx, psum) + [
+            inst.bitcast('i1*', '%s*' % tp, psum, pside),
+            inst.load(tp, pside, out)]
             
 class SumSide(Expr):
     def __init__(self, sumExpr):
@@ -273,3 +272,25 @@ class SumSide(Expr):
     def compile(self, cx, out):
         sum = cx.local()
         return self.expr.compile(cx, sum) + [inst.load('i1', sum, out)]
+        
+class UnitLiteral(Expr):
+    def __init__(self):
+        self.type = types.Unit()
+    def compile(self, cx, out):
+        return lu.dup('undef', out, '%Unit', cx)
+        
+class ProductProjection(Expr):
+    def __init__(self, productExpr, side, type):
+        self.type = type
+        self.expr = productExpr
+        self.side = side
+    def compile(self, cx, out):
+        x = cx.local()
+        return self.expr.compile(cx, x) + [
+            inst.extractvalue(self.expr.type.llvm(cx), x, self.side, out)]
+            
+class ErrorExpr(Expr):
+    def __init__(self):
+        self.type = VarType()
+    def compile(self, cx, out):
+        return lu.dup('undef', out, self.type.llvm(cx), cx)

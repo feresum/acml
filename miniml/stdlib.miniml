@@ -8,3 +8,16 @@ let ineg = _builtin(integer_negate) in
 let iadd = expand_product_arg _builtin(integer_add) in
 let ilt = expand_product_arg _builtin(integer_less) in
 let ieq = expand_product_arg _builtin(integer_equal) in
+
+let fst = fun x -> _fst(x) in
+let snd = fun x -> _snd(x) in
+let error = fun x -> _error in
+
+let nil = >()| in
+let cons = fun head -> fun tail -> <head, tail| in
+let tail = fun list -> switch(list: nonnil -> snd nonnil | u -> nil) in
+let head = fun list -> switch(list: nonnil -> fst nonnil | u -> error()) in
+let map = fun f ->
+    let map2 = fun map1 -> fun list -> switch(list: nn -> cons (f (fst nn)) (map1 (snd nn)) | u -> nil)
+    in map2 map2 in
+    

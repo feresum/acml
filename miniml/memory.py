@@ -64,7 +64,7 @@ def rctype(ltype, cx):
     return lt.Aggregate((cx.size_t, ltype))
 def getPtrToRefcount(addr, ltype, cx, out):
     sizeptr = cx.local()
-    return [inst.bitcast(ltype, cx.size_t, addr, sizeptr),
+    return [inst.bitcast(ltype, '%size_t*', addr, sizeptr),
     '%s = getelementptr %%size_t,%%size_t* %s, %%size_t -1' % (out, sizeptr)]
     
 def heapRefcountIncrement(addr, ltype, cx):

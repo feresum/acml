@@ -30,7 +30,7 @@ define %Unit @ml_putchar(%voidptr, %Char %c)
 reg('integer_negate', types.Arrow(types.Int, types.Int),
     lu.formatFunctionDef('%Int @integer_negate(%voidptr, %Int %n)',
         [inst.sub_nsw('%Int', 0, '%n', '%result'),
-         inst.ret('%Int', '%result')]))
+         inst.ret('%Int', '%result')], 0))
 
 reg('~malloc', None, 'declare %voidptr @malloc(%size_t)')
 reg('~free', None, 'declare void @free(%voidptr)')
@@ -44,7 +44,7 @@ def regBinaryIntOp(name, instr, type):
              inst.extractvalue(intpair, '%args', 1, '%y'),
              '%%result = %s %%Int %%x, %%y' % instr,
              inst.ret(ltype, '%result')]
-    reg(name, types.Arrow(mIntpair, type), lu.formatFunctionDef(sig, lines))
+    reg(name, types.Arrow(mIntpair, type), lu.formatFunctionDef(sig, lines, 0))
     
 regBinaryIntOp('integer_add', 'add nsw', types.Int)
 regBinaryIntOp('integer_less', 'icmp slt', types.Bool)

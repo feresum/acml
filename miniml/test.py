@@ -1,6 +1,5 @@
 import parse, llvm_util, mltypes as t, ltypes as lt
 import pdb, bdb
-from llvm_instructions import versionSyntaxReplace
 
 
 def shouldFailTypeCheck(code):
@@ -22,6 +21,10 @@ def shouldWork():
     sc('<3|')
     sc('>fun x->x|')
     sc('switch(<3| : l -> 9 | r -> 5)')
+    sftc('switch( (fun x->5) : l->3 | r->7)')
+    sftc('switch(  <3| : l -> 3 | r -> true)')
+    sc('switch( > fun x -> x | : l -> 3 | r -> 3)')
+    sc('switch( > fun x -> x | : l-> 3, true  | r -> (r 3, r true))')
     sc('if true then 1 else 2')
     sftc('if true then 1 else true')
     sftc('if 1 then 1 else 1')
@@ -55,7 +58,6 @@ p = input()
 try:
     ast = parse.parse(lib + p, cx)
     code = cx.compile(ast)
-    code = versionSyntaxReplace((3, 6, 2), code)
     print(code)
 except:
     pdb.post_mortem()
