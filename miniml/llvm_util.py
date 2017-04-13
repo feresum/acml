@@ -41,9 +41,13 @@ class CompileContext:
         self.destructors = {}
         self.lambdaDefinitions = []
         self.destructorDefinitions = []
+        self.freeTypeNums = set()
         self.s = ChainMap(key_defaultdict())
         self.size_t = size_tMap[bitness]
         self.voidptr = lt.Scalar('%voidptr', self.size_t.size, self.size_t.align)
+        self.funDepth = 0
+        self.varDefDepth = {}
+        self.varRefDepth = {}
     def useBuiltin(self, f):
         self.builtins.add(f)
     def getDestructor(self, mtype):
@@ -62,6 +66,7 @@ class CompileContext:
         return name
     def local(self):
         self.id += 1
+        #if self.id==2:import pdb;pdb.set_trace()
         return '%r' + str(self.id)
     def label(self):
         self.id += 1
@@ -75,10 +80,30 @@ class CompileContext:
     def destructor(self):
         self.id += 1
         return '%destroy' + str(self.id)
+    def defLocal(self, key, reg, ltype):
+        self.bindings[key] = (reg, ltype)
+        var, sltype = key
+        self.varDefDepth[var] = self.varRefDepth[var] = self.funDepth
+    def defLocal(self, var):
+        self.varDefDepth[var] = self.varRefDepth[var] = self.funDepth
+    def useLocal(self, var):
+        if self.funDepth > self.varRefDepth[var]:
+            self.varRefDepth[var] = self.funDepth
+    def delLocal(self, key):
+        var, sltype = key
+        del self.bindings[key]
+        del self.varDefDepth[var], self.varRefDepth[var]
+    def delLocal(self, var):
+        del self.varDefDepth[var], self.varRefDepth[var]
+
     def compile(self, expr):
         from mlbuiltins import definition
+        expr.markDepth(0)
         compiled = expr.compile(self, self.local()) + [inst.ret()]
         out = initial_typedefs + '%%size_t = type %s\n\n' % self.size_t
+        for n in self.freeTypeNums:
+            out += '%%free_type_%d = type i1\n' % n
+        out += '\n'
         for b in self.builtins:
             out += definition[b]
         for nam, tp in self.funcTypeDeclarations.values():
@@ -109,7 +134,6 @@ def storeField(structAddr, structLtype, fieldIndex, fieldLtype, cx, value):
 
 def dup(ra, rb, ltype, cx):
     wat = cx.local()
-    #if wat=='%r197':import pdb;pdb.set_trace()
     return ['%s = insertvalue {%s} undef, %s %s, 0 ;nop' % (wat, ltype, ltype, ra),
             '%s = extractvalue {%s} %s, 0 ;nop' % (rb, ltype, wat)]
 
@@ -123,6 +147,7 @@ def dup(ra, rb, ltype, cx):
 def makeFuncObj(fptr, mtype, closure, cx, out):
     fpt = funcPtrType(mtype, cx)
     s0 = cx.local()
+    #if out=='%r7':import pdb;pdb.set_trace()
     return ['%s = insertvalue %s undef, %s %s, 0' % (s0, mtype.llvm(cx), fpt, fptr),
             '%s = insertvalue %s %s, %s %s, 1' % (out, mtype.llvm(cx), s0, '%voidptr', closure)]
 def funcObjFunction(fobj, mtype, cx, out):
@@ -139,8 +164,8 @@ def formAggregate(ltype, cx, out, *members):
         code.append(inst.insertvalue(ltype, r, t, m, r2, i))
         r = r2
     return code + dup(r, out, ltype, cx)
-def closureType(mtypes, cx):
-    return lt.Aggregate(t.llvm(cx) for t in mtypes)
+def closureType(ltypes, cx):
+    return lt.Aggregate(ltypes)
     
 
 def heapCreate(ltype, value, cx, out):

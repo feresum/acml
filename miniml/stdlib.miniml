@@ -18,6 +18,8 @@ let cons = fun head -> fun tail -> <head, tail| in
 let tail = fun list -> switch(list: nonnil -> snd nonnil | u -> nil) in
 let head = fun list -> switch(list: nonnil -> fst nonnil | u -> error()) in
 let map = fun f ->
-    let map2 = fun map1 -> fun list -> switch(list: nn -> cons (f (fst nn)) (map1 (snd nn)) | u -> nil)
+    let map2 = fun map2 -> fun list -> switch(list: nn -> cons (f (fst nn)) (map2 map2 (snd nn)) | u -> nil)
     in map2 map2 in
-    
+let len = fun list ->
+    let len2 = fun len2 -> fun list -> switch(list: nn -> iadd 1 (len2 len2 (snd nn)) | nil -> 0)
+    in len2 len2 list in

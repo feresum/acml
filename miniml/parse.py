@@ -64,7 +64,7 @@ class Parser:
         pname = self.tl.pop().name
         assert(self.tl.pop() == '=')
         boundExpr = self.expr()
-        var = LetVar(boundExpr.type)
+        var = LetVar(boundExpr)
         assert(self.tl.pop() == 'in')
         self.bind(pname, var)
         x = self.expr()
@@ -103,7 +103,7 @@ class Parser:
         self.tl.pop()
         y = self.product()
         dpr(x, y)
-        return Product(x, y)#self.product())
+        return Product(x, y)
 
     def application(self):
         x = self.paren()
@@ -155,22 +155,23 @@ class Parser:
         assert(self.tl.pop() == ':')
         sumType = types.Sum(types.VarType(), types.VarType())
         self.unify(sumType, sumExpr.type)
-        temp = LetVar(sumType)
-        tempRef = lambda: LetBindingRef(temp, self.subst, self.lambdaTypes)
-        def letArrow(i):
-            name = self.tl.pop().name
-            var = LetVar(sumType.parms[i])
-            self.bind(name, var)
-            assert(self.tl.pop() == '->')
-            x = self.expr()
-            self.unbind(name)
-            return LetBinding(var, SumProjection(tempRef(), i, sumType.parms[i]), x)
-        left = letArrow(0)
+        temp = LambdaVar()
+        self.lambdaTypes.add(temp.type)
+        tempRef = lambda: LambdaBindingRef(temp)
+        def case(i):
+            f = self.fun_f()
+            a = Application(f, SumProjection(tempRef(), i, sumType.parms[i]))
+            self.unify(a.function.type, types.Arrow(a.argument.type, a.type))
+            return a
+        left = case(0)
         assert(self.tl.pop() == '|')
-        right = letArrow(1)
+        right = case(1)
         assert(self.tl.pop() == ')')
         self.unify(left.type, right.type)
-        return LetBinding(temp, sumExpr, If3(SumSide(tempRef()), right, left))
+        out = Application(Lambda(temp, If3(SumSide(tempRef()), right, left)), sumExpr)
+        self.unify(out.function.type, types.Arrow(out.argument.type, out.type))
+        self.lambdaTypes.remove(temp.type)
+        return out
         
     def single(self):
         if self.tl[-1] == 'true':
@@ -202,12 +203,3 @@ class Parser:
             return ref
         else:
             return LambdaBindingRef(var)
-    
-
-def test():
-    xx = """fun x -> fun x -> x
-            let f = ( fun x -> x ) in f
-            let f = ( fun x -> x ) in if if f then f else f then f else f
-            if ( fun x -> x ) then ( fun y -> y ) """
-    for l in xx.split('\n'):
-        print(parse(l))

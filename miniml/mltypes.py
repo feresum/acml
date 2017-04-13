@@ -41,8 +41,10 @@ class VarType(MLtype):
     def llvm(self, cx):
         t = cx.s[self]
         if t is self:
-            cx.warn('Expression compiled with generic type')
-            t = Unit()
+            if self.id not in cx.freeTypeNums:
+                cx.warn('Expression compiled with generic type')
+                cx.freeTypeNums.add(self.id)
+            return lt.alias(lt.i1, '%free_type_' + str(self.id))
         return t.llvm(cx)
         
 
@@ -167,6 +169,30 @@ def typeDbgStr(t, subst):
     return s(t)
     
 
+def typeDbgStr2(t, subst):
+    names = {}
+    def s(t):
+        if t in names:
+            return names[t]
+        isVar = t.isTypeVariable()
+        free = isVar and t is subst[t]
+        if t.isDirectlyRecursive(subst) or free:
+            names[t] = "'" + str(t.id) if t.isTypeVariable() else str(id(t))
+            if free: return names[t]
+            nam = names[t] + '='
+        elif t is not subst[t]:
+            return s(subst[t])
+        else:
+            nam = ''
+        t = subst[t]
+        nam += type(t).__name__
+        if t.nParms > 0:
+            nam += '(' + ', '.join(map(s, t.parms)) + ')'
+        return nam
+    return s(t)
+    
+    
+    
 def freeVariables(t, subst):
     seen = set()
     free = []

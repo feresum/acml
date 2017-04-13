@@ -20,6 +20,7 @@ def ret(type=None, value=None):
         return 'ret void'
     return 'ret %s %s' % (type, value)
 def insertvalue(tOuter, outer, tInner, inner, out, *inds):
+    if type(out)==list:import pdb;pdb.set_trace()
     a = '%s = insertvalue %s %s, %s %s' % (out, tOuter, outer, tInner, inner)
     for i in inds:
         a += ', %d' % i

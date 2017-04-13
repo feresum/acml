@@ -24,7 +24,7 @@ def shouldWork():
     sftc('switch( (fun x->5) : l->3 | r->7)')
     sftc('switch(  <3| : l -> 3 | r -> true)')
     sc('switch( > fun x -> x | : l -> 3 | r -> 3)')
-    sc('switch( > fun x -> x | : l-> 3, true  | r -> (r 3, r true))')
+    #sc('switch( > fun x -> x | : l-> (3, true)  | r -> (r 3, r true))')
     sc('if true then 1 else 2')
     sftc('if true then 1 else true')
     sftc('if 1 then 1 else 1')

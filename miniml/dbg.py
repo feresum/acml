@@ -1,5 +1,5 @@
 from sys import stderr
-dpr = lambda *a: print(*a, file=stderr)
+dpr = lambda *a, **k: print(*a, file=stderr, **k)
 def dbgEntry(f):
     def ff(*a):
         dpr('Entering', f.__name__)

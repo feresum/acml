@@ -12,10 +12,18 @@ class Expr:
     def reduce(self, f): # f(node, [reduced children])
         rc = [c.reduce(f) for c in self.children()]
         return f(self, rc)
-    def dump(self, level = 0):
-        print('  ' * level + type(self).__name__)
+    def dump(self, subst = None, level = 0):
+        dpr('  ' * level + type(self).__name__, end=' ')
+        if subst:
+            dpr(types.typeDbgStr2(self.type, subst))
+        else:
+            dpr()
         for c in self.children():
-            c.dump(level + 1)
+            c.dump(subst, level + 1)
+    def markDepth(self, d):
+        self.depth = d
+        for c in self.children():
+            c.markDepth(d + 1)
 
 class Var: pass
 
@@ -24,9 +32,11 @@ class LambdaVar(Var):
         self.type = VarType()
 
 class LetVar(Var):
-    def __init__(self, type):
-        self.type = type
-        self.instantiatedTypes = set()
+    def __init__(self, boundExpr):
+        self.type = boundExpr.type
+        self.boundExpr = boundExpr
+        #self.instantiatedTypes = set()
+
 
 class Lambda(Expr):
     def __init__(self, var, expr):
@@ -36,18 +46,30 @@ class Lambda(Expr):
     def children(self):
         return [self.expr]
     def closedVars(self):
-        return self.reduce(lambda n, rc: [(n.key(), n.type)] if isinstance(n, BindingRef) else sum(rc, []))
+        return self.reduce(lambda n, rc: [n.var] if isinstance(n, BindingRef) else sum(rc, []))
     def compile(self, cx, out):
+        cx.funDepth += 1
         name = cx.lamb()
-        dpr('lamba type', self.type.llvm(cx), types.canonicalStr(self.type, cx.s))
-        zz = types.canonicalStr(self.type, cx.s)
-        cv = [(k,t) for (k,t) in set(self.closedVars()) if k in cx.bindings]
-        cx.bindings[self.var] = ['%arg']
+        arg = cx.local()
         retLtype = self.type.result().llvm(cx)
-        fdef = 'define %s %s(%%voidptr %%cl0, %s %%arg)\n{' % (retLtype, name,
-            self.type.argument().llvm(cx))
-        fsig = '%s %s(%%voidptr %%cl0, %s %%arg)' % (retLtype, name, self.type.argument().llvm(cx))
+        fsig = '%s %s(%%voidptr %%cl0, %s %s)' % (retLtype, name, self.type.argument().llvm(cx), arg)
+        fout = cx.local()
         
+        k = (self.var, str(self.var.type.llvm(cx)))
+        cx.bindings[k] = (arg, self.var.type.llvm(cx))
+        cx.defLocal(self.var)
+        exprCode = self.expr.compile(cx, fout)
+        # cx.delLocal(self.var)
+        # cx.funDepth -= 1
+        # cv = []
+        # for (var, sltype), (reg, ltype) in cx.bindings.items():
+            # assert type(ltype)!=str
+            # if var in cx.varDefDepth and cx.varRefDepth[var] > cx.varDefDepth[var]:
+                # cx.varRefDepth[var] = cx.funDepth
+                # cv.append((var, ltype))
+        del cx.bindings[k]
+        cv0 = set(self.closedVars())
+        cv = [(var, ltype) for (var, sltype), (reg, ltype) in cx.bindings.items() if var in cv0]
         if cv:
             clTypes = list(zip(*cv))[1]
             clType = lu.closureType(clTypes, cx)
@@ -56,12 +78,15 @@ class Lambda(Expr):
             clTypedPtr, clPtr = cx.local(), cx.local() 
             storeClosure = []
             builder = 'undef'
-            for i, (key, typ) in enumerate(cv):
+            copiedRegs = set()
+            for i, (var, ltype) in enumerate(cv):
                 reg = cx.local()
-                loadClosure.append('%s = extractvalue %s %%cl, %d' % (reg, clType, i))
+                rBound, _ = cx.bindings[(var, str(ltype))]
+                if rBound in copiedRegs: continue
+                copiedRegs.add(rBound)
+                loadClosure.append('%s = extractvalue %s %%cl, %d' % (rBound, clType, i))
                 storeClosure.append('%s = insertvalue %s %s, %s %s, %d' % (
-                    reg, clType, builder, typ.llvm(cx), cx.bindings[key][-1], i))
-                cx.bindings[key].append(reg)
+                    reg, clType, builder, ltype, rBound, i))
                 builder = reg
             storeClosure += lu.heapCreate(clType, builder, cx, clTypedPtr)
             storeClosure += ['%s = bitcast %s* %s to %%voidptr' % (clPtr, clType, clTypedPtr)]
@@ -69,12 +94,11 @@ class Lambda(Expr):
         else:
             loadClosure = storeClosure = []
             clPtr = 'null'
-        fout = cx.local()
-        fbody = loadClosure + self.expr.compile(cx, fout) + [inst.ret(retLtype, fout)]
+        
+        
+        fbody = loadClosure + exprCode + [inst.ret(retLtype, fout)]
         cx.lambdaDefinitions.append(lu.formatFunctionDef(fsig, fbody, cx.llvmVersion))
-        del cx.bindings[self.var]
-        for key, _ in cv:
-            cx.bindings[key].pop()
+        
         return storeClosure + lu.makeFuncObj(name, self.type, clPtr, cx, out)
 class LetBinding(Expr):
     def __init__(self, var, value, expr):
@@ -88,18 +112,19 @@ class LetBinding(Expr):
         # TODO - actually compile this correctly
         # current implementation will duplicate side effects
         # (and not do them at all if there are 0 instantiations!)
-        code = []
-        for t in self.var.instantiatedTypes:
-            valueReg = cx.local()
-            cx.bindings[t] = [valueReg]
-            cx.s = cx.s.new_child()
-            types.unify_inplace(t, self.var.type, cx.s)
-            code += self.value.compile(cx, valueReg)
-            cx.s = cx.s.parents
-        ret = code + self.expr.compile(cx, out)
-        for t in self.var.instantiatedTypes:
-            del cx.bindings[t]
-        return ret
+        # for t in self.var.instantiatedTypes:
+            # cx.bindings[t] = [cx.local()]
+        self.var.instantiationCode = []
+        self.var.instantiationKeys = []
+        cx.defLocal(self.var)
+        exprCode = self.expr.compile(cx, out)
+        instantiationsCode = self.var.instantiationCode
+        del self.var.instantiationCode
+        for key in self.var.instantiationKeys:
+            del cx.bindings[key]
+        del self.var.instantiationKeys
+        cx.delLocal(self.var)
+        return instantiationsCode + exprCode
 
 class Sequence(Expr):
     def __init__(self, x0, x1):
@@ -140,23 +165,39 @@ class If3(Expr):
                 
 class BindingRef(Expr):
     def compile(self, cx, out):
-        return lu.dup(cx.bindings[self.key()][-1], out, self.type.llvm(cx), cx)
+        reg, ltype = cx.bindings[self.key(cx)]
+        cx.useLocal(self.var)
+        return lu.dup(reg, out, ltype, cx)
+    def key(self, cx):
+        return (self.var, str(self.type.llvm(cx)))
 class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
         self.type = types.duplicate(var.type, subst, nongeneric)
-        var.instantiatedTypes.add(self.type)
-    def key(self):
-        return self.type
+        #var.instantiatedTypes.add(self.type)
 
+    def compile(self, cx, out):
+        lt = self.type.llvm(cx)
+        k = (self.var, str(lt))
+        if k in cx.bindings:
+            return super().compile(cx, out)
+        cx.useLocal(self.var)
+        cx.bindings[k] = (out, lt)
+        cx.s = cx.s.new_child()
+        types.unify_inplace(self.type, self.var.type, cx.s)
+        code = self.var.boundExpr.compile(cx, out)
+        cx.s = cx.s.parents
+        self.var.instantiationKeys.append(k)
+        #dpr('adding %d to %d' % (id(self.key()), id(self.var)))
+        self.var.instantiationCode += code
+        return []
 
 
 class LambdaBindingRef(BindingRef):
     def __init__(self, var):
         self.var = var
         self.type = var.type
-    def key(self):
-        return self.var
+
 
 
 
@@ -167,19 +208,6 @@ class Application(Expr):
         self.type = VarType()
     def children(self):
         return [self.function, self.argument]
-    def compile(self, cx, out):
-        funcVar, argVar = cx.local(), cx.local()
-        funcCode = self.function.compile(cx, funcVar)
-        argCode = self.argument.compile(cx, argVar)
-        ftype = self.function.type
-        fpp, dpp, fp, dp = cx.local(), cx.local(), cx.local(), cx.local()
-        fpt = lu.funcPtrType(self.function.type)
-        return funcCode + argCode + [
-            fpp + ' = ' + lu.functionFuncPtrPtr(funcVar, ftype),
-            '%s = load %s* %s' % (fp, fpt, fpp),
-            dpp + ' = ' + lu.functionDataPtrPtr(funcVar, ftype),
-            '%s = load %s* %s' % (dp, '%voidptr', dpp),
-            '%s = call %s %s(%s %s, %s %s)' % (out, ftype.result().llvm(), fp, '%voidptr', dp, ftype.argument().llvm(), argVar)]
     def compile(self, cx, out):
         funcReg, argReg = cx.local(), cx.local()
         funcCode = self.function.compile(cx, funcReg)
@@ -258,6 +286,8 @@ class SumProjection(Expr):
     def __init__(self, sumExpr, side, type):
         self.type = type
         self.expr = sumExpr
+    def children(self):
+        return [self.expr]
     def compile(self, cx, out):
         psum, pside = cx.local(), cx.local()
         tp = self.type.llvm(cx)
@@ -269,6 +299,8 @@ class SumSide(Expr):
     def __init__(self, sumExpr):
         self.type = types.Bool
         self.expr = sumExpr
+    def children(self):
+        return [self.expr]
     def compile(self, cx, out):
         sum = cx.local()
         return self.expr.compile(cx, sum) + [inst.load('i1', sum, out)]
@@ -284,6 +316,8 @@ class ProductProjection(Expr):
         self.type = type
         self.expr = productExpr
         self.side = side
+    def children(self):
+        return [self.expr]
     def compile(self, cx, out):
         x = cx.local()
         return self.expr.compile(cx, x) + [
