@@ -1,5 +1,6 @@
 import parse, llvm_util, mltypes as t, ltypes as lt
 import pdb, bdb
+import sys
 
 
 def shouldFailTypeCheck(code):
@@ -49,8 +50,10 @@ def shouldWork():
 try: shouldWork()
 except: pdb.post_mortem()
 
+llver = eval(sys.argv[1]) if len(sys.argv) > 1 else 0
 
-cx = llvm_util.CompileContext(64)
+cx = llvm_util.CompileContext(64, llver)
+
 
 lib = open('stdlib.miniml').read()
 p = input()

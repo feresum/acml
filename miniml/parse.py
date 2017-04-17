@@ -69,7 +69,9 @@ class Parser:
         self.bind(pname, var)
         x = self.expr()
         self.unbind(pname)
-        return LetBinding(var, boundExpr, x)
+        lb = LetBinding(var, boundExpr, x)
+        lb.letName = pname
+        return lb
     def sequence(self):
         x = self.ifthen()
         while self.tl[-1] == ';':
@@ -180,6 +182,8 @@ class Parser:
         if self.tl[-1] == 'false':
             self.tl.pop()
             return IntegralLiteral(types.Bool, 0)
+        if type(self.tl[-1]) is str and self.tl[-1][0] == "'":
+            return IntegralLiteral(types.Char, ord(self.tl.pop()[1]))
         if self.tl[-1] == '_builtin':
             self.tl.pop()
             assert(self.tl.pop() == '(')
@@ -200,6 +204,7 @@ class Parser:
         var = self.bindings[name][-1]
         if isinstance(var, LetVar):
             ref = LetBindingRef(var, self.subst, self.lambdaTypes)
+            ref.letName = name
             return ref
         else:
             return LambdaBindingRef(var)

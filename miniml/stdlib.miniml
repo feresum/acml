@@ -2,24 +2,49 @@ let char = _builtin(char) in
 let putchar = _builtin(ml_putchar) in
 
 let expand_product_arg = fun f ->
-    fun x -> fun y -> f (x, y)
-in
+    fun x -> fun y -> f (x, y) in
+let flip = fun f -> fun x -> fun y -> f y x in
 let ineg = _builtin(integer_negate) in
 let iadd = expand_product_arg _builtin(integer_add) in
 let ilt = expand_product_arg _builtin(integer_less) in
 let ieq = expand_product_arg _builtin(integer_equal) in
+let idiv = flip (expand_product_arg _builtin(integer_divide)) in
+let irem = flip (expand_product_arg _builtin(integer_remainder)) in
+let imul = expand_product_arg _builtin(integer_multiply) in
+let iabs = fun x -> (if ilt x 0 then ineg x else x) in
+let i64_max = 9223372036854775807 in
+let i64_min = iadd (ineg i64_max) (ineg 1) in
 
 let fst = fun x -> _fst(x) in
 let snd = fun x -> _snd(x) in
 let error = fun x -> _error in
 
 let nil = >()| in
-let cons = fun head -> fun tail -> <head, tail| in
+let cons = fun head -> fun tail ->
+    if true then <head, tail|
+    else if false then tail else >()| in
 let tail = fun list -> switch(list: nonnil -> snd nonnil | u -> nil) in
 let head = fun list -> switch(list: nonnil -> fst nonnil | u -> error()) in
 let map = fun f ->
     let map2 = fun map2 -> fun list -> switch(list: nn -> cons (f (fst nn)) (map2 map2 (snd nn)) | u -> nil)
     in map2 map2 in
-let len = fun list ->
+let len =
     let len2 = fun len2 -> fun list -> switch(list: nn -> iadd 1 (len2 len2 (snd nn)) | nil -> 0)
-    in len2 len2 list in
+    in len2 len2 in
+
+let cat = fun la -> fun lb -> 
+    let cat2 = fun cat2 -> fun la -> switch(la: nn -> cons (fst nn) (cat2 cat2 (snd nn))
+        | nil -> lb) in cat2 cat2 la in
+let rev =
+    let rev2 = fun rev2 -> fun x -> fun y -> switch(y: nn -> rev2 rev2 (cons (fst nn) x) (snd nn)
+        | nil -> x) in rev2 rev2 nil in
+        
+let int2str = fun i ->
+    let digit = fun d -> char (iadd 48 d) in
+    let i2s2 = fun f -> fun n -> fun str -> 
+        if ieq 0 n then str else f f (idiv 10 n) (cons (digit (irem 10 n)) str) in
+    let i_div_10 = idiv 10 i in
+    let i_rem_10 = irem 10 i in
+    if ilt i 0 then cons '-' (i2s2 i2s2 (ineg i_div_10) (cons (digit (ineg i_rem_10)) nil))
+               else i2s2 i2s2 i_div_10 (cons (digit i_rem_10) nil) in
+    

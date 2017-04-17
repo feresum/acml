@@ -20,11 +20,12 @@ def ret(type=None, value=None):
         return 'ret void'
     return 'ret %s %s' % (type, value)
 def insertvalue(tOuter, outer, tInner, inner, out, *inds):
-    if type(out)==list:import pdb;pdb.set_trace()
     a = '%s = insertvalue %s %s, %s %s' % (out, tOuter, outer, tInner, inner)
     for i in inds:
         a += ', %d' % i
     return a
+def add(type, x, y, out):
+    return '%s = add %s %s, %s' % (out, type, x, y)
 def sub_nsw(type, x, y, out):
     return '%s = sub nsw %s %s, %s' % (out, type, x, y)
 def load(type, ptr, out):
@@ -45,9 +46,9 @@ def versionSyntaxReplace(inst, ver):
 
 def branch(*a):
     if len(a) == 1:
-        return 'br label ' + a[0]
+        return 'br label %' + a[0]
     cond, trueLbl, falseLbl = a
-    return 'br i1 %s, label %%%s, label%%%s' % (cond, trueLbl, falseLbl)
+    return 'br i1 %s, label %%%s, label %%%s' % (cond, trueLbl, falseLbl)
 def label(name):
     return name + ':'
 def phi(type, out, *valueLabelPairs):

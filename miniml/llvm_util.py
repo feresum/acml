@@ -1,5 +1,6 @@
 from sys import stderr
 from collections import ChainMap
+import re
 import ltypes as lt
 import memory as mem
 import llvm_instructions as inst
@@ -80,22 +81,6 @@ class CompileContext:
     def destructor(self):
         self.id += 1
         return '%destroy' + str(self.id)
-    def defLocal(self, key, reg, ltype):
-        self.bindings[key] = (reg, ltype)
-        var, sltype = key
-        self.varDefDepth[var] = self.varRefDepth[var] = self.funDepth
-    def defLocal(self, var):
-        self.varDefDepth[var] = self.varRefDepth[var] = self.funDepth
-    def useLocal(self, var):
-        if self.funDepth > self.varRefDepth[var]:
-            self.varRefDepth[var] = self.funDepth
-    def delLocal(self, key):
-        var, sltype = key
-        del self.bindings[key]
-        del self.varDefDepth[var], self.varRefDepth[var]
-    def delLocal(self, var):
-        del self.varDefDepth[var], self.varRefDepth[var]
-
     def compile(self, expr):
         from mlbuiltins import definition
         expr.markDepth(0)
@@ -163,7 +148,12 @@ def formAggregate(ltype, cx, out, *members):
         r2 = cx.local()
         code.append(inst.insertvalue(ltype, r, t, m, r2, i))
         r = r2
-    return code + dup(r, out, ltype, cx)
+    code += dup(r, out, ltype, cx)
+    things = ['%s %s' % p for p in zip(ltype.members, members)]
+    prefix = '%s = {' % out
+    pretty = ['; ' + l for l in (prefix + (',\n' + ' ' * len(prefix)).join(
+        things) + '}').split('\n')]
+    return code + pretty
 def closureType(ltypes, cx):
     return lt.Aggregate(ltypes)
     
@@ -188,18 +178,40 @@ def extractProductElement(mtype, p, ind, cx, out):
 def getSumTypeSelector(s, cx, out):
     return [load('i1', s, out)]
     
-def sumSideType(msum, side, cx):
-    return lt.Aggregate((lt.i1, msum.parms[side].llvm(cx)))
+def sumSideType(ltype):
+    return lt.Aggregate((lt.i1, ltype))
     
 def formatFunctionDef(signature, lines, version):
     s = 'define ' + signature + '\n{\n'
-    for l in lines:
-        s += '\t' + inst.versionSyntaxReplace(l, version) + '\n'
+    for l in removeNops(inst.versionSyntaxReplace(l, version) for l in lines):
+        s += '\t' + l + '\n'
     return s + '}\n'
-    
-def conditionalValue(cond, type, trueBlock, trueReg, falseBlock, falseReg, cx, out):
-    tLbl, fLbl, rejoin = cx.label(), cx.label(), cx.label()
-    return [inst.branch(cond, tLbl, fLbl), inst.label(tLbl)] + trueBlock + [inst.branch(rejoin),
-        inst.label(fLbl)] + falseBlock + [inst.branch(rejoin), inst.phi(type, out, (trueReg, tLbl), (falseReg, fLbl))]
-           
-        
+
+def conditionalValue(cond, ltype, trueBlock, trueReg, falseBlock, falseReg, cx, out):
+    tLbl, tLbl0, fLbl, fLbl0, rejoin = cx.label(), cx.label(), cx.label(), cx.label(), cx.label()
+    tReg2, fReg2 = cx.local(), cx.local()
+    z = lambda lbl0, lbl1, reg0, reg1, block: [inst.label(lbl0)] + block + [inst.branch(lbl1),
+        inst.label(lbl1)] + dup(reg0, reg1, ltype, cx) + [inst.branch(rejoin)]
+    return [inst.branch(cond, tLbl0, fLbl0)] + z(tLbl0, tLbl, trueReg, tReg2, trueBlock) \
+        + z(fLbl0, fLbl, falseReg, fReg2, falseBlock) + [inst.label(rejoin),
+        inst.phi(ltype, out, (tReg2, tLbl), (fReg2, fLbl))]
+
+def removeNops(func):
+    return func######################
+    lines = iter(func)
+    out = []
+    rx = r'(\S+)'
+    reps = key_defaultdict()
+    while True:
+        try: line = re.sub(r'(%\S+)', lambda m: reps[m.group(1)], next(lines))
+        except StopIteration: return out
+        if line.endswith(';nop'):
+            l2 = next(lines)
+            m2 = re.fullmatch(r'%s = extractvalue \{(.+)\} %s, 0 ;nop' % (rx, rx), l2)
+            new, tp, tmp = m2.groups()
+            escTp = re.escape(tp)
+            m1 = re.fullmatch(r'%s = insertvalue {%s} undef, %s %s, 0 ;nop' % (tmp, escTp, escTp, rx), line)
+            orig, = m1.groups()
+            reps[new] = orig
+        else:
+            out.append(line)

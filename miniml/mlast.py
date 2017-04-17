@@ -55,21 +55,12 @@ class Lambda(Expr):
         fsig = '%s %s(%%voidptr %%cl0, %s %s)' % (retLtype, name, self.type.argument().llvm(cx), arg)
         fout = cx.local()
         
-        k = (self.var, str(self.var.type.llvm(cx)))
+        k = (self.var, types.canonicalStr(self.var.type, cx.s))
         cx.bindings[k] = (arg, self.var.type.llvm(cx))
-        cx.defLocal(self.var)
         exprCode = self.expr.compile(cx, fout)
-        # cx.delLocal(self.var)
-        # cx.funDepth -= 1
-        # cv = []
-        # for (var, sltype), (reg, ltype) in cx.bindings.items():
-            # assert type(ltype)!=str
-            # if var in cx.varDefDepth and cx.varRefDepth[var] > cx.varDefDepth[var]:
-                # cx.varRefDepth[var] = cx.funDepth
-                # cv.append((var, ltype))
         del cx.bindings[k]
         cv0 = set(self.closedVars())
-        cv = [(var, ltype) for (var, sltype), (reg, ltype) in cx.bindings.items() if var in cv0]
+        cv = [(var, ltype, cstr) for (var, cstr), (reg, ltype) in cx.bindings.items() if var in cv0]
         if cv:
             clTypes = list(zip(*cv))[1]
             clType = lu.closureType(clTypes, cx)
@@ -79,9 +70,9 @@ class Lambda(Expr):
             storeClosure = []
             builder = 'undef'
             copiedRegs = set()
-            for i, (var, ltype) in enumerate(cv):
+            for i, (var, ltype, cstr) in enumerate(cv):
                 reg = cx.local()
-                rBound, _ = cx.bindings[(var, str(ltype))]
+                rBound, _ = cx.bindings[(var, cstr)]
                 if rBound in copiedRegs: continue
                 copiedRegs.add(rBound)
                 loadClosure.append('%s = extractvalue %s %%cl, %d' % (rBound, clType, i))
@@ -112,18 +103,14 @@ class LetBinding(Expr):
         # TODO - actually compile this correctly
         # current implementation will duplicate side effects
         # (and not do them at all if there are 0 instantiations!)
-        # for t in self.var.instantiatedTypes:
-            # cx.bindings[t] = [cx.local()]
         self.var.instantiationCode = []
         self.var.instantiationKeys = []
-        cx.defLocal(self.var)
         exprCode = self.expr.compile(cx, out)
         instantiationsCode = self.var.instantiationCode
         del self.var.instantiationCode
         for key in self.var.instantiationKeys:
             del cx.bindings[key]
         del self.var.instantiationKeys
-        cx.delLocal(self.var)
         return instantiationsCode + exprCode
 
 class Sequence(Expr):
@@ -151,25 +138,17 @@ class If3(Expr):
     def children(self):
         return [self.cond, self.trueExpr, self.falseExpr]
     def compile(self, cx, out):
-        trueBlock, falseBlock, endBlock = cx.label(), cx.label(), cx.label()
         condReg, trueReg, falseReg = cx.local(), cx.local(), cx.local()
-        condCode = self.cond.compile(cx, condReg)
-        trueCode = self.trueExpr.compile(cx, trueReg)
-        falseCode = self.falseExpr.compile(cx, falseReg)
-        jumpEnd = 'br label %' + endBlock
-        return condCode + \
-            ['br i1 %s, label %%%s, label %%%s' % (condReg, trueBlock, falseBlock),
-             trueBlock + ':'] + trueCode + [jumpEnd, falseBlock + ':'] + \
-            falseCode + [jumpEnd, endBlock + ':', '%s = phi %s [%s, %%%s], [%s, %%%s]' % 
-                (out, self.type.llvm(cx), trueReg, trueBlock, falseReg, falseBlock)]
+        return self.cond.compile(cx, condReg) + lu.conditionalValue(condReg, self.type.llvm(cx), 
+            self.trueExpr.compile(cx, trueReg), trueReg, self.falseExpr.compile(cx, falseReg), 
+            falseReg, cx, out)
                 
 class BindingRef(Expr):
     def compile(self, cx, out):
         reg, ltype = cx.bindings[self.key(cx)]
-        cx.useLocal(self.var)
         return lu.dup(reg, out, ltype, cx)
     def key(self, cx):
-        return (self.var, str(self.type.llvm(cx)))
+        return (self.var, types.canonicalStr(self.type, cx.s))
 class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
@@ -178,10 +157,9 @@ class LetBindingRef(BindingRef):
 
     def compile(self, cx, out):
         lt = self.type.llvm(cx)
-        k = (self.var, str(lt))
+        k = (self.var, types.canonicalStr(self.type, cx.s))
         if k in cx.bindings:
             return super().compile(cx, out)
-        cx.useLocal(self.var)
         cx.bindings[k] = (out, lt)
         cx.s = cx.s.new_child()
         types.unify_inplace(self.type, self.var.type, cx.s)
@@ -190,6 +168,8 @@ class LetBindingRef(BindingRef):
         self.var.instantiationKeys.append(k)
         #dpr('adding %d to %d' % (id(self.key()), id(self.var)))
         self.var.instantiationCode += code
+        if hasattr(self, 'letName'):
+            self.var.instantiationCode.append('; let %s = %s' % (self.letName, out))
         return []
 
 
@@ -275,7 +255,7 @@ class SumConstructor(Expr):
         return [self.expr]
     def compile(self, cx, out):
         expr, tagged, ptr = cx.local(), cx.local(), cx.local()
-        sideType = lu.sumSideType(self.type, self.side, cx)
+        sideType = lu.sumSideType(self.type.parms[self.side].llvm(cx))
         return self.expr.compile(cx, expr) + \
             lu.formAggregate(sideType, cx, tagged, self.side, expr) \
              + lu.heapCreate(sideType, tagged, cx, ptr) + [
@@ -286,14 +266,17 @@ class SumProjection(Expr):
     def __init__(self, sumExpr, side, type):
         self.type = type
         self.expr = sumExpr
+        self.side = side
     def children(self):
         return [self.expr]
     def compile(self, cx, out):
-        psum, pside = cx.local(), cx.local()
+        psum, pside, p = cx.local(), cx.local(), cx.local()
         tp = self.type.llvm(cx)
+        sst = lu.sumSideType(tp)
         return self.expr.compile(cx, psum) + [
-            inst.bitcast('i1*', '%s*' % tp, psum, pside),
-            inst.load(tp, pside, out)]
+            inst.bitcast('i1*', '%s*' % sst, psum, pside),
+            inst.structGEP(pside, sst, p, 1),
+            inst.load(tp, p, out)]
             
 class SumSide(Expr):
     def __init__(self, sumExpr):

@@ -49,3 +49,6 @@ def regBinaryIntOp(name, instr, type):
 regBinaryIntOp('integer_add', 'add nsw', types.Int)
 regBinaryIntOp('integer_less', 'icmp slt', types.Bool)
 regBinaryIntOp('integer_equal', 'icmp eq', types.Bool)
+regBinaryIntOp('integer_divide', 'sdiv', types.Int)
+regBinaryIntOp('integer_remainder', 'srem', types.Int)
+regBinaryIntOp('integer_multiply', 'mul nsw', types.Int)
