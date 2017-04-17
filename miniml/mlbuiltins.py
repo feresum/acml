@@ -17,6 +17,14 @@ define %Char @char(%voidptr, %Int %code)
 }
 ''')
 
+reg('char_to_int', types.Arrow(types.Char, types.Int), '''
+define %Int @char_to_int(%voidptr, %Char %ch)
+{
+    %i = zext %Char %ch to %Int
+    ret %Int %i
+}
+''')
+
 reg('ml_putchar', types.Arrow(types.Char, types.Unit()), '''
 declare i32 @putchar(i32)
 define %Unit @ml_putchar(%voidptr, %Char %c)
@@ -24,6 +32,16 @@ define %Unit @ml_putchar(%voidptr, %Char %c)
     %int_c = zext %Char %c to i32
     call i32 @putchar(i32 %int_c)
     ret UNIT_VALUE
+}
+''')
+
+reg('ml_getchar', types.Arrow(types.Unit(), types.Int), '''
+declare i32 @getchar()
+define %Int @ml_getchar(%voidptr, %Unit)
+{
+    %c32 = call i32 @getchar()
+    %c64 = sext i32 %c32 to %Int
+    ret %Int %c64
 }
 ''')
 

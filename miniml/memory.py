@@ -8,6 +8,9 @@
 #    a scope with ownership ends without returning the object
 #    a heap object pointing to it is destroyed
 
+# Live references can be on either the stack or the heap
+# 
+
 import mltypes as types
 import ltypes as lt
 import llvm_util as lu
