@@ -25,6 +25,13 @@ class FuncptrWithClosure(Ltype):
         self.name = name
         self.size = cx.voidptr.size * 2
         self.align = cx.voidptr.align
+        
+class Funcptr(Ltype):
+    def __init__(self, fnType, cx):
+        self.name = fnType + '*'
+        self.size = cx.voidptr.size
+        self.align = cx.voidptr.align
+
 class Aggregate(Ltype):
     def __init__(self, members):
         self.members = tuple(members)

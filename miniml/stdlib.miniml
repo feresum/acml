@@ -57,7 +57,7 @@ let int2str = fun i ->
                else i2s2 i2s2 i_div_10 (cons (digit i_rem_10) nil) in
 
 let is_digit = fun ch -> let ccode = ord ch in if ilt ccode (ord '0') then false else not (ilt (ord '9') ccode) in
-let str2int = fun s ->
+let str2int =
     let found = fun f -> fun n -> fun s -> switch(s: nn -> 
         if is_digit (fst nn) then f f (iadd (imul 10 n) (iadd (ineg (ord '0')) (ord (fst nn)))) (snd nn)
         else n | nil -> n) in
@@ -65,12 +65,12 @@ let str2int = fun s ->
         switch(s: nn -> if is_digit (fst nn) then (if negative then ineg else id) (found found 0 s)
                         else s2i2 s2i2 (ceq '-' (fst nn)) (snd nn)
                 | nil -> 0) in
-    s2i2 s2i2 false s in
+    s2i2 s2i2 false in
     
-let read_stdin_n = fun n_bytes ->
+let read_stdin_n =
     let rs = fun rs -> fun n -> if ieq n 0 then nil
         else switch(getchar (): c -> cons c (rs rs (iadd (ineg 1) n))
                              | eof -> nil) in
-     rs rs n_bytes in
+     rs rs in
 let read_stdin = fun u -> read_stdin_n (ineg 1) in
 

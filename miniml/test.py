@@ -1,5 +1,5 @@
 import parse, llvm_util, mltypes as t, ltypes as lt
-import pdb, bdb
+import pdb
 import sys
 
 

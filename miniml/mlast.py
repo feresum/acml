@@ -2,6 +2,7 @@ import mltypes as types
 from mltypes import VarType
 import llvm_util as lu
 import llvm_instructions as inst
+import memory as mem
 from dbg import *
 
 class Expr:
@@ -48,7 +49,6 @@ class Lambda(Expr):
     def closedVars(self):
         return self.reduce(lambda n, rc: [n.var] if isinstance(n, BindingRef) else sum(rc, []))
     def compile(self, cx, out):
-        cx.funDepth += 1
         name = cx.lamb()
         arg = cx.local()
         retLtype = self.type.result().llvm(cx)
@@ -57,10 +57,12 @@ class Lambda(Expr):
         
         k = (self.var, types.canonicalStr(self.var.type, cx.s))
         cx.bindings[k] = (arg, self.var.type.llvm(cx))
+        cx.bindings2[k] = (lu.reusable(mem.reference  (arg, self.var.type, cx), arg), 
+                           lu.reusable(mem.unreference(arg, self.var.type, cx), arg))
         exprCode = self.expr.compile(cx, fout)
-        del cx.bindings[k]
+        del cx.bindings[k], cx.bindings2[k]
         cv0 = set(self.closedVars())
-        cv = [(var, ltype, cstr) for (var, cstr), (reg, ltype) in cx.bindings.items() if var in cv0]
+        cv = [(var, ltype, cstr, reg) for (var, cstr), (reg, ltype) in cx.bindings.items() if var in cv0]
         if cv:
             clTypes = list(zip(*cv))[1]
             clType = lu.closureType(clTypes, cx)
@@ -70,17 +72,23 @@ class Lambda(Expr):
             storeClosure = []
             builder = 'undef'
             copiedRegs = set()
-            for i, (var, ltype, cstr) in enumerate(cv):
+            closureItems = []
+            for i, (var, ltype, cstr, rBound) in enumerate(cv):
                 reg = cx.local()
-                rBound, _ = cx.bindings[(var, cstr)]
                 if rBound in copiedRegs: continue
                 copiedRegs.add(rBound)
-                loadClosure.append('%s = extractvalue %s %%cl, %d' % (rBound, clType, i))
+                ref, unref = cx.bindings2[(var, cstr)]
+                closureItems.append((ltype, unref, rBound))
+                loadClosure.append(inst.extractvalue(clType, '%cl', i, rBound))
                 storeClosure.append('%s = insertvalue %s %s, %s %s, %d' % (
                     reg, clType, builder, ltype, rBound, i))
                 builder = reg
-            storeClosure += lu.heapCreate(clType, builder, cx, clTypedPtr)
+                storeClosure += ref(cx)
+            destruc = cx.closureDestructor()
+            storeClosure += mem.createClosure(clType, builder, destruc, cx, clTypedPtr)
             storeClosure += ['%s = bitcast %s* %s to %%voidptr' % (clPtr, clType, clTypedPtr)]
+            
+            cx.destructorDefinitions.append(mem.closureDestructorDefinition(destruc, clType, closureItems, cx))
             
         else:
             loadClosure = storeClosure = []
@@ -107,11 +115,13 @@ class LetBinding(Expr):
         self.var.instantiationKeys = []
         exprCode = self.expr.compile(cx, out)
         instantiationsCode = self.var.instantiationCode
+        unrefCode = []
         del self.var.instantiationCode
         for key in self.var.instantiationKeys:
-            del cx.bindings[key]
+            unrefCode += cx.bindings2[key][1](cx)
+            del cx.bindings[key], cx.bindings2[key]
         del self.var.instantiationKeys
-        return instantiationsCode + exprCode
+        return instantiationsCode + exprCode + unrefCode
 
 class Sequence(Expr):
     def __init__(self, x0, x1):
@@ -145,8 +155,10 @@ class If3(Expr):
                 
 class BindingRef(Expr):
     def compile(self, cx, out):
-        reg, ltype = cx.bindings[self.key(cx)]
-        return lu.dup(reg, out, ltype, cx)
+        k = self.key(cx)
+        reg, ltype = cx.bindings[k]
+        ref, unref = cx.bindings2[k]
+        return ref(cx) + lu.dup(reg, out, ltype, cx)
     def key(self, cx):
         return (self.var, types.canonicalStr(self.type, cx.s))
 class LetBindingRef(BindingRef):
@@ -161,16 +173,17 @@ class LetBindingRef(BindingRef):
         if k in cx.bindings:
             return super().compile(cx, out)
         cx.bindings[k] = (out, lt)
+        ref = mem.reference(out, self.type, cx)
+        cx.bindings2[k] = (lu.reusable(ref, out), lu.reusable(mem.unreference(out, self.type, cx), out))
         cx.s = cx.s.new_child()
         types.unify_inplace(self.type, self.var.type, cx.s)
         code = self.var.boundExpr.compile(cx, out)
         cx.s = cx.s.parents
         self.var.instantiationKeys.append(k)
-        #dpr('adding %d to %d' % (id(self.key()), id(self.var)))
         self.var.instantiationCode += code
         if hasattr(self, 'letName'):
             self.var.instantiationCode.append('; let %s = %s' % (self.letName, out))
-        return []
+        return ref
 
 
 class LambdaBindingRef(BindingRef):
@@ -198,7 +211,9 @@ class Application(Expr):
             lu.funcObjFunction(funcReg, ftype, cx, fptr) + \
             lu.funcObjClosure(funcReg, ftype, cx, cl) + \
             ['%s = call %s %s(%s %s, %s %s)' % (out, ftype.result().llvm(cx), 
-                fptr, '%voidptr', cl, ftype.argument().llvm(cx), argReg)]
+                fptr, '%voidptr', cl, ftype.argument().llvm(cx), argReg)] + \
+            mem.unreference(funcReg, self.function.type, cx) + \
+            mem.unreference(argReg, self.argument.type, cx)
 
 class NativeFunction(Expr):
     def __init__(self, name, type):
@@ -276,7 +291,7 @@ class SumProjection(Expr):
         return self.expr.compile(cx, psum) + [
             inst.bitcast('i1*', '%s*' % sst, psum, pside),
             inst.structGEP(pside, sst, p, 1),
-            inst.load(tp, p, out)]
+            inst.load(tp, p, out)] + mem.unreference(psum, self.expr.type, cx)
             
 class SumSide(Expr):
     def __init__(self, sumExpr):
@@ -286,7 +301,8 @@ class SumSide(Expr):
         return [self.expr]
     def compile(self, cx, out):
         sum = cx.local()
-        return self.expr.compile(cx, sum) + [inst.load('i1', sum, out)]
+        return self.expr.compile(cx, sum) + [inst.load('i1', sum, out)] \
+            + mem.unreference(sum, self.expr.type, cx)
         
 class UnitLiteral(Expr):
     def __init__(self):
@@ -304,7 +320,8 @@ class ProductProjection(Expr):
     def compile(self, cx, out):
         x = cx.local()
         return self.expr.compile(cx, x) + [
-            inst.extractvalue(self.expr.type.llvm(cx), x, self.side, out)]
+            inst.extractvalue(self.expr.type.llvm(cx), x, self.side, out)
+            ] + mem.unreference(x, self.expr.type, cx)
             
 class ErrorExpr(Expr):
     def __init__(self):

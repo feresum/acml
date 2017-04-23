@@ -35,10 +35,15 @@ def load(type, ptr, out):
 def store(type, value, addr):
     return 'store %s %s, %s* %s' % (type, value, type, addr)
 
-def structGEP(addr, ltype, out, *ind):
+def structGEP(addr, type, out, *ind):
     return Instruction(((0, '{0} = getelementptr inbounds {1}* {2}, {3}'),
                    ((3, 7), '{0} = getelementptr inbounds {1},{1}* {2}, {3}')),
-                 out, ltype, addr, ', '.join('i32 %d' % i for i in (0,) + ind))
+                 out, type, addr, ', '.join('i32 %d' % i for i in (0,) + ind))
+                 
+def linearGEP(addr, type, out, ind):
+    return Instruction(((0, '{0} = getelementptr {1}* {2}, %size_t {3}'),
+                   ((3, 7), '{0} = getelementptr {1},{1}* {2}, %size_t {3}')),
+                 out, type, addr, ind)
 
 def versionSyntaxReplace(inst, ver):
     # versions are not accurate
@@ -53,3 +58,6 @@ def label(name):
     return name + ':'
 def phi(type, out, *valueLabelPairs):
     return '%s = phi %s ' % (out, type) + ', '.join('[ %s, %%%s ]' % vl for vl in valueLabelPairs)
+
+def icmp(comp, type, x, y, out):
+    return '%s = icmp %s %s %s, %s' % (out, comp, type, x, y)
