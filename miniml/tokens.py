@@ -14,4 +14,4 @@ def tok(w):
     return w
     
 def tokenize(s):
-    return re.findall(r'\w+|[(),<>|:]|\'.\'|[^\w\s]+', s)
+    return re.findall(r'\w(?:[-\w]*\w)?|[(),<>|:]|\'.\'|[^\w\s]+', s)

@@ -4,19 +4,19 @@ let putchar = _builtin(ml_putchar) in
 let ord = _builtin(char_to_int) in
 let not = fun b -> if b then false else true in
 
-let expand_product_arg = fun f ->
+let expand-product-arg = fun f ->
     fun x -> fun y -> f (x, y) in
 let flip = fun f -> fun x -> fun y -> f y x in
 let ineg = _builtin(integer_negate) in
-let iadd = expand_product_arg _builtin(integer_add) in
-let ilt = expand_product_arg _builtin(integer_less) in
-let ieq = expand_product_arg _builtin(integer_equal) in
-let idiv = flip (expand_product_arg _builtin(integer_divide)) in
-let irem = flip (expand_product_arg _builtin(integer_remainder)) in
-let imul = expand_product_arg _builtin(integer_multiply) in
+let iadd = expand-product-arg _builtin(integer_add) in
+let ilt = expand-product-arg _builtin(integer_less) in
+let ieq = expand-product-arg _builtin(integer_equal) in
+let idiv = flip (expand-product-arg _builtin(integer_divide)) in
+let irem = flip (expand-product-arg _builtin(integer_remainder)) in
+let imul = expand-product-arg _builtin(integer_multiply) in
 let iabs = fun x -> (if ilt x 0 then ineg x else x) in
-let i64_max = 9223372036854775807 in
-let i64_min = iadd (ineg i64_max) (ineg 1) in
+let i64-max = 9223372036854775807 in
+let i64-min = iadd (ineg i64-max) (ineg 1) in
 
 let ceq = fun ca -> fun cb -> ieq (ord ca) (ord cb) in
 let getchar = fun u -> let c = _builtin(ml_getchar) u in
@@ -51,26 +51,26 @@ let int2str = fun i ->
     let digit = fun d -> char (iadd 48 d) in
     let i2s2 = fun f -> fun n -> fun str -> 
         if ieq 0 n then str else f f (idiv 10 n) (cons (digit (irem 10 n)) str) in
-    let i_div_10 = idiv 10 i in
-    let i_rem_10 = irem 10 i in
-    if ilt i 0 then cons '-' (i2s2 i2s2 (ineg i_div_10) (cons (digit (ineg i_rem_10)) nil))
-               else i2s2 i2s2 i_div_10 (cons (digit i_rem_10) nil) in
+    let i-div-10 = idiv 10 i in
+    let i-rem-10 = irem 10 i in
+    if ilt i 0 then cons '-' (i2s2 i2s2 (ineg i-div-10) (cons (digit (ineg i-rem-10)) nil))
+               else i2s2 i2s2 i-div-10 (cons (digit i-rem-10) nil) in
 
-let is_digit = fun ch -> let ccode = ord ch in if ilt ccode (ord '0') then false else not (ilt (ord '9') ccode) in
+let is-digit = fun ch -> let ccode = ord ch in if ilt ccode (ord '0') then false else not (ilt (ord '9') ccode) in
 let str2int =
     let found = fun f -> fun n -> fun s -> switch(s: nn -> 
-        if is_digit (fst nn) then f f (iadd (imul 10 n) (iadd (ineg (ord '0')) (ord (fst nn)))) (snd nn)
+        if is-digit (fst nn) then f f (iadd (imul 10 n) (iadd (ineg (ord '0')) (ord (fst nn)))) (snd nn)
         else n | nil -> n) in
     let s2i2 = fun s2i2 -> fun negative -> fun s ->
-        switch(s: nn -> if is_digit (fst nn) then (if negative then ineg else id) (found found 0 s)
+        switch(s: nn -> if is-digit (fst nn) then (if negative then ineg else id) (found found 0 s)
                         else s2i2 s2i2 (ceq '-' (fst nn)) (snd nn)
                 | nil -> 0) in
     s2i2 s2i2 false in
     
-let read_stdin_n =
+let read-stdin-n =
     let rs = fun rs -> fun n -> if ieq n 0 then nil
         else switch(getchar (): c -> cons c (rs rs (iadd (ineg 1) n))
                              | eof -> nil) in
      rs rs in
-let read_stdin = fun u -> read_stdin_n (ineg 1) in
+let read-stdin = fun u -> read-stdin-n (ineg 1) in
 
