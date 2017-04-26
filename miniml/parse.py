@@ -41,8 +41,15 @@ class Parser:
         return self.sequence()
 
     def fun_f(self):
-        pname = self.tl.pop().name
+        argtoken = self.tl.pop()
         var = LambdaVar()
+        if argtoken == '(':
+            assert(self.tl.pop() == ')')
+            pname = '()'
+            self.unify(var.type, types.Unit())
+        else:
+            pname = argtoken.name
+        
         self.lambdaTypes.add(var.type)
         # I have no idea what I'm doing
         #ngExtra = {v for v in types.freeVariables(var.type, self.subst) if v not in self.lambdaTypes}
