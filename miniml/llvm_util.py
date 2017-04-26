@@ -40,12 +40,13 @@ class CompileContext:
         self.destructorDefinitions = []
         self.freeTypeNums = set()
         self.s = ChainMap(key_defaultdict())
+        self.cstrCache = ChainMap()
         self.size_t = size_tMap[bitness]
         self.voidptr = lt.Scalar('%voidptr', self.size_t.size, self.size_t.align)
     def useBuiltin(self, f):
         self.builtins.add(f)
     def getDestructor(self, mtype): # for sum types
-        smtype = types.canonicalStr(mtype, self.s)
+        smtype = self.canonicalStr(mtype)
         if smtype in self.destructors:
             return self.destructors[smtype]
         name = self.destructor()
@@ -59,6 +60,18 @@ class CompileContext:
                   inst.ret()]
         self.destructorDefinitions.append(formatFunctionDef(sig, dbody, self.llvmVersion))
         return name
+    def pushTypeContext(self, ta, tb):
+        self.s = self.s.new_child()
+        self.cstrCache = self.cstrCache.new_child()
+        types.unify_inplace(ta, tb, self.s)
+    def popTypeContext(self):
+        self.s = self.s.parents
+        self.cstrCache = self.cstrCache.parents
+    def canonicalStr(self, t):
+        try: return self.cstrCache[t]
+        except KeyError: pass
+        self.cstrCache[t] = s = types.canonicalStr(t, self.s)
+        return s
     def local(self):
         self.id += 1
         return '%r' + str(self.id)

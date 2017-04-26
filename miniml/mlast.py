@@ -55,7 +55,7 @@ class Lambda(Expr):
         fsig = '%s %s(%%voidptr %%cl0, %s %s)' % (retLtype, name, self.type.argument().llvm(cx), arg)
         fout = cx.local()
         
-        k = (self.var, types.canonicalStr(self.var.type, cx.s))
+        k = (self.var, cx.canonicalStr(self.var.type))
         cx.bindings[k] = (arg, self.var.type.llvm(cx))
         cx.bindings2[k] = (lu.reusable(mem.reference  (arg, self.var.type, cx), arg), 
                            lu.reusable(mem.unreference(arg, self.var.type, cx), arg))
@@ -160,7 +160,7 @@ class BindingRef(Expr):
         ref, unref = cx.bindings2[k]
         return ref(cx) + lu.dup(reg, out, ltype, cx)
     def key(self, cx):
-        return (self.var, types.canonicalStr(self.type, cx.s))
+        return (self.var, cx.canonicalStr(self.type))
 class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
@@ -169,16 +169,15 @@ class LetBindingRef(BindingRef):
 
     def compile(self, cx, out):
         lt = self.type.llvm(cx)
-        k = (self.var, types.canonicalStr(self.type, cx.s))
+        k = (self.var, cx.canonicalStr(self.type))
         if k in cx.bindings:
             return super().compile(cx, out)
         cx.bindings[k] = (out, lt)
         ref = mem.reference(out, self.type, cx)
         cx.bindings2[k] = (lu.reusable(ref, out), lu.reusable(mem.unreference(out, self.type, cx), out))
-        cx.s = cx.s.new_child()
-        types.unify_inplace(self.type, self.var.type, cx.s)
+        cx.pushTypeContext(self.type, self.var.type)
         code = self.var.boundExpr.compile(cx, out)
-        cx.s = cx.s.parents
+        cx.popTypeContext()
         self.var.instantiationKeys.append(k)
         self.var.instantiationCode += code
         if hasattr(self, 'letName'):

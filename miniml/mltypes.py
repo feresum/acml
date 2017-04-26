@@ -64,7 +64,7 @@ class Arrow(TypeConstructor(2)):
     def result(self):
         return self.parms[1]
     def llvm(self, cx):
-        cstr = canonicalStr(self, cx.s)
+        cstr = cx.canonicalStr(self)
         if cstr not in cx.funcTypeDeclarations:
             func = cx.func()
             cx.funcTypeDeclarations[cstr] = (func,)
