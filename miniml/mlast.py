@@ -218,23 +218,6 @@ class NativeFunction(Expr):
     def __init__(self, name, type):
         self.name = name
         self.type = type
-    def compile(self, cx):
-        cx.useBuiltin(self.name)
-        out = cx.local()
-        fpp, dpp = cx.local(), cx.local()
-        fpt = lu.funcPtrType(self.type)
-        return ['%s = alloca %s' % (out, self.type.llvm()),
-                 fpp + ' = ' + lu.functionFuncPtrPtr(out, self.type),
-                 'store %s @%s, %s* %s' % (fpt, self.name, fpt, fpp),
-                 dpp + ' = ' + lu.functionDataPtrPtr(out, self.type),
-                 'store %s null, %s* %s' % (lu.voidptr, lu.voidptr, dpp)]
-    def compile(self, cx, out):
-        cx.useBuiltin(self.name)
-        ltype = self.type.llvm()
-        fpt = lu.funcPtrType(self.type)
-        return ['%s = alloca %s' % (out, ltype)] + \
-            lu.storeField(out, ltype, 0, fpt, cx, '@' + self.name) + \
-            lu.storeField(out, ltype, 1, '%voidptr', cx, 'null')
     def compile(self, cx, out):
         cx.useBuiltin(self.name)
         return lu.makeFuncObj('@' + self.name, self.type, 'null', cx, out)
@@ -290,7 +273,8 @@ class SumProjection(Expr):
         return self.expr.compile(cx, psum) + [
             inst.bitcast('i1*', '%s*' % sst, psum, pside),
             inst.structGEP(pside, sst, p, 1),
-            inst.load(tp, p, out)] + mem.unreference(psum, self.expr.type, cx)
+            inst.load(tp, p, out)] + mem.reference(out, self.type, cx) + \
+            mem.unreference(psum, self.expr.type, cx)
             
 class SumSide(Expr):
     def __init__(self, sumExpr):
@@ -320,7 +304,7 @@ class ProductProjection(Expr):
         x = cx.local()
         return self.expr.compile(cx, x) + [
             inst.extractvalue(self.expr.type.llvm(cx), x, self.side, out)
-            ] + mem.unreference(x, self.expr.type, cx)
+            ] + mem.reference(out, self.type, cx) + mem.unreference(x, self.expr.type, cx)
             
 class ErrorExpr(Expr):
     def __init__(self):
