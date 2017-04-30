@@ -1,5 +1,5 @@
 from collections import ChainMap
-from llvm_util import funcPtrType, key_defaultdict
+import llvm_util as lu
 from typeunion import TypeUnion
 import ltypes as lt
 import memory
@@ -69,11 +69,8 @@ class Arrow(TypeConstructor(2)):
             func = cx.func()
             cx.funcTypeDeclarations[cstr] = (func,)
             cx.funcTypeDeclarations[cstr] = (func,
-                'type {%s, %s}' % (funcPtrType(self, cx), '%voidptr'))
+                'type {%s, %s}' % (lu.funcPtrType(self, cx), '%voidptr'))
         return lt.FuncptrWithClosure(cx.funcTypeDeclarations[cstr][0], cx)
-    def register(self, cx):
-        cx.funcTypeDeclarations[self] = 'type %s = {%s, %s}' % (
-            self.llvm(cx.s), funcPtrType(self, cx), '%voidptr')
 
 class Product(TypeConstructor(2)):
     def llvm(self, cx):
@@ -280,134 +277,12 @@ def equivalent(a, b, bind):
             return False
         return all(map(unify_, ua.parms, ub.parms))
     return unify_(a, b)
-        
 
-def unify_inplace(a, b, bind):
-    delme = set()
-    def unify_r(a, b):
-        ua, ub = bind.get(a, a), bind.get(b, b)
-        if ua is ub: return
-        if ua.isTypeVariable():
-            bind[ua] = ub
-            return
-        bind[ub] = ua
-        if ub.isTypeVariable():
-            return
-        delme.add(ub)
-        for x, y in zip(ua.parms, ub.parms):
-            unify_r(x, y)
-    unify_r(a, b)
-    for k in delme:
-        del bind[k]
-def unify_inplace(a, b, bind): # not really in place anymore...
-    dpr('unify', bind)
-    dpr('unify', [typeDbgStr0(x) for x in (a,b)])
-    bind2 = key_defaultdict()
-    def unify_r(a, b):
-        ua, ub = bind2[bind[a]], bind2[bind[b]]
-        if ua is ub: return
-        if ua.isTypeVariable():
-            bind2[ua] = ub
-            return
-        bind2[ub] = ua
-        if ub.isTypeVariable():
-            return
-        if type(ua) != type(ub) or ua.nParms != ub.nParms:
-            raise TypesNotUnifiable()
-        for x, y in zip(ua.parms, ub.parms):
-            unify_r(x, y)
-    unify_r(a, b)
-    for k, v in bind2.items():
-        if k.isTypeVariable():
-            bind[k] = v
-def unify_inplace(a, b, bind0):
-    dpr('unify', bind0)
-    dpr('unify', [typeDbgStr0(x) for x in (a,b)])
-    bind = ChainMap({}, bind0)
-    def unify_r(a, b):
-        ua, ub = bind[a], bind[b]
-        if ua is ub: return
-        if ua.isTypeVariable() and a is ua:
-            bind0[ua] = ub
-            return
-        if ub.isTypeVariable() and b is ub:
-            bind0[ub] = ua
-            return
-        bind[ub] = ua
-        if type(ua) != type(ub) or ua.nParms != ub.nParms:
-            raise TypesNotUnifiable()
-        assert(not(ua.isTypeVariable() or ub.isTypeVariable()))
-        for x, y in zip(ua.parms, ub.parms):
-            unify_r(x, y)
-    unify_r(a, b)
-    
-def unify_inplace(a, b, bind):
-    delme = set()
-    def unify_r(a, b):
-        ua, ub = bind.get(a, a), bind.get(b, b)
-        if ua is ub: return
-        if ua.isTypeVariable() and a is ua:
-            bind[ua] = ub
-            return
-        bind[ub] = ua
-        if ub.isTypeVariable() and b is ub:
-            return
-        assert(not(a.isTypeVariable() or b.isTypeVariable()))
-        delme.add(ub)
-        for x, y in zip(ua.parms, ub.parms):
-            unify_r(x, y)
-    unify_r(a, b)
-    for k in delme:
-        del bind[k]
-        
 def unify_hack(a, b, bind):
     F = TypeConstructor(len(bind) + 1)
     return unify(F(a, *bind.keys()), F(b, *bind.values()))
     
-def unify_inplace(a, b, bind):
-    u = unify_hack(a, b, bind)
-    dpr('bind', bind)
-    dpr('u', u)
-    # for k, v in u.items():
-        # if k.isTypeVariable() and k not in bind:
-            # while v.isTypeVariable() and v in u:
-                # v = u[v]
-            # dpr(k,v)
-            # bind[k] = v
-    bind.clear()
-    for k, v in u.items():
-        if k.isTypeVariable():
-            while v.isTypeVariable() and v in u:
-                v = u[v]
-            bind[k] = v
-def unify_inplace(a, b, bind0):
-    bind1 = {}
-    bind = ChainMap(bind1, bind0)
-    def do_bind(x, y):
-        for k, v in list(bind.items()):
-            if v == x:
-                bind1[k] = y
-        bind1[x] = y
-    def unify_r(a, b):
-        ua, ub = bind[a], bind[b]
-        if ua is ub:
-            return
-        if ua.isTypeVariable():
-            do_bind(ua, ub)
-        elif ub.isTypeVariable():
-            do_bind(ub, ua)
-        elif type(ua) != type(ub) or ua.nParms != ub.nParms:
-            raise TypesNotUnifiable()
-        else:
-            if any(k.isTypeVariable() and bind[k] == ua for k in bind.keys()):
-                do_bind(ua, ub)
-            else:
-                do_bind(ub, ua)
-            for x, y in zip(ua.parms, ub.parms):
-                unify_r(x, y)
-    for k, v in bind1.items():
-        if k.isTypeVariable():
-            bind0[k] = v
+
 def unify_inplace(a, b, bind):
     tu = TypeUnion()
     tu.import_dict(bind)

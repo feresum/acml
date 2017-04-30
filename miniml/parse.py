@@ -111,7 +111,6 @@ class Parser:
             return x
         self.tl.pop()
         y = self.product()
-        dpr(x, y)
         return Product(x, y)
 
     def application(self):
