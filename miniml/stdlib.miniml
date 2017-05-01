@@ -33,7 +33,7 @@ let getchar = fun () -> let c = _builtin(ml_getchar) () in
 let fst = fun x -> _fst(x) in
 let snd = fun x -> _snd(x) in
 let error = fun () -> _error in
-
+let ignore = fun x -> () in
 
 let id = fun x -> x in
 let nil = >()| in
@@ -96,3 +96,12 @@ let factor = fun n ->
     if ilt n 0 then cons (ineg 1, 1) nonneg-factors else nonneg-factors in
 let gcd = self-apply (fun g -> fun a -> fun b ->
     if ieq 0 a then b else g g (irem a b) a ) in
+
+let delimit = fun delimiter -> fun list ->
+    switch(list:
+        ht -> cat (fst ht) (self-apply (fun f -> fun l ->
+            switch(l:
+                nn -> cat delimiter (cat (fst nn) (f f (snd nn)))
+                | n -> nil)
+            ) (snd ht))
+        | n -> nil ) in

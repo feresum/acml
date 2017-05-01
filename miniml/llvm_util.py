@@ -209,7 +209,7 @@ def ifThenElse(cond, trueBlock, falseBlock, cx):
             inst.branch(rejoin),
             inst.label(rejoin)]
 
-def ifThen(cond, trueBlock):
+def ifThen(cond, trueBlock, cx):
     tLbl, rejoin = cx.label(), cx.label()
     return [inst.branch(cond, tLbl, rejoin),
             inst.label(tLbl)] + trueBlock + [

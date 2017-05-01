@@ -309,8 +309,9 @@ def unifyN(*a):
         b = unify(a[0], t, b)
     return b
     
-def unifiable(a, b):
-    try: unify(a, b)
+def unifiable(a, b, bind):
+    bind = ChainMap({}, bind)
+    try: unify_inplace(a, b, bind)
     except TypesNotUnifiable: return False
     else: return True
     

@@ -130,6 +130,8 @@ class Sequence(Expr):
         self.type = x1.type
     def children(self):
         return [self.x0, self.x1]
+    def compile(self, cx, out):
+        return self.x0.compile(cx, cx.local()) + self.x1.compile(cx, out)
         
 class If2(Expr):
     def __init__(self, cond, expr):
@@ -138,6 +140,11 @@ class If2(Expr):
         self.type = types.Unit()
     def children(self):
         return [self.cond, self.expr]
+    def compile(self, cx, out):
+        condReg = cx.local()
+        return self.cond.compile(cx, condReg) + \
+        lu.ifThen(condReg, self.expr.compile(cx, cx.local()), cx) + \
+        lu.dup('undef', out, '%Unit', cx)
         
 class If3(Expr):
     def __init__(self, cond, trueExpr, falseExpr):
