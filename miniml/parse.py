@@ -29,7 +29,7 @@ class Parser:
         self.bindings[name].pop()
         
     def unify(self, ta, tb):
-        types.unify_inplace(ta, tb, self.subst)
+        types.unify_inplace_tu(ta, tb, self.subst)
         
     def expr(self):
         t = self.tl.pop()

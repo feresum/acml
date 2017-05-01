@@ -1,5 +1,6 @@
 from sys import stderr
 from collections import ChainMap
+from typeunion import TypeUnion
 import re
 import ltypes as lt
 import memory as mem
@@ -39,10 +40,11 @@ class CompileContext:
         self.lambdaDefinitions = []
         self.destructorDefinitions = []
         self.freeTypeNums = set()
-        self.s = ChainMap(key_defaultdict())
+        self.s = TypeUnion()
         self.cstrCache = ChainMap()
         self.size_t = size_tMap[bitness]
         self.voidptr = lt.Scalar('%voidptr', self.size_t.size, self.size_t.align)
+        self.typeUnionStack = []
     def useBuiltin(self, f):
         self.builtins.add(f)
     def getDestructor(self, mtype): # for sum types
@@ -61,11 +63,14 @@ class CompileContext:
         self.destructorDefinitions.append(formatFunctionDef(sig, dbody, self.llvmVersion))
         return name
     def pushTypeContext(self, ta, tb):
-        self.s = self.s.new_child()
+        old = self.s
+        self.s = TypeUnion()
+        self.s.update(old)
+        self.typeUnionStack.append(old)
         self.cstrCache = self.cstrCache.new_child()
-        types.unify_inplace(ta, tb, self.s)
+        types.unify_inplace_tu(ta, tb, self.s)
     def popTypeContext(self):
-        self.s = self.s.parents
+        self.s = self.typeUnionStack.pop()
         self.cstrCache = self.cstrCache.parents
     def canonicalStr(self, t):
         try: return self.cstrCache[t]

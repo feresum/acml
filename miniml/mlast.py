@@ -171,8 +171,7 @@ class BindingRef(Expr):
 class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
-        self.type = types.duplicate(var.type, subst, nongeneric)
-        #var.instantiatedTypes.add(self.type)
+        self.type = types.duplicate_tu(var.type, subst, nongeneric)
 
     def compile(self, cx, out):
         lt = self.type.llvm(cx)

@@ -259,10 +259,9 @@ def equivalent(a, b, bind):
     bind = ChainMap({}, bind)
     b = duplicate(b, bind)
     u = TypeUnion()
-    u.import_dict(bind)
     joinedV = set()
     def unify_(a, b):
-        ua, ub = u[a], u[b]
+        ua, ub = u[bind[a]], u[bind[b]]
         if ua is ub:
             return True
         if ua.isTypeVariable() ^ ub.isTypeVariable():
@@ -302,6 +301,20 @@ def unify_inplace(a, b, bind):
         if t.isTypeVariable():
             bind[t] = tu[t]
             
+def unify_inplace_tu(a, b, tu):
+    def unify_(a, b):
+        ua, ub = tu[a], tu[b]
+        if ua is ub:
+            return
+        tu.join(ua, ub)
+        if ua.isTypeVariable() or ub.isTypeVariable():
+            return
+        if type(ua) != type(ub) or ua.nParms != ub.nParms:
+            raise TypesNotUnifiable()
+        for x, y in zip(ua.parms, ub.parms):
+            unify_(x, y)
+    unify_(a, b)
+        
             
 def unifyN(*a):
     b = {}
@@ -371,6 +384,22 @@ def duplicate(t, subst, nongeneric=set()):
         return t2
     return d(t)
 
+def duplicate_tu(t, tu, nongeneric=set()):
+    nongeneric = {v for u in nongeneric for v in freeVariables(u, tu)}
+    tv = {}
+    def d(t):
+        if t.isTypeVariable():
+            if t in nongeneric:
+                return t
+            if t not in tv:
+                tv[t] = VarType()
+                if tu[t] != t:
+                    tu.join(tv[t], d(tu[t]))
+            return tv[t]
+        t2 = copy(t)
+        t2.parms = list(map(d, t2.parms))
+        return t2
+    return d(t)
 
 def canonicalStr(t, subst):
     numbering = {}
