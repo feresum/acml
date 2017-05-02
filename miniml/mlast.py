@@ -258,7 +258,7 @@ class SumConstructor(Expr):
         return [self.expr]
     def compile(self, cx, out):
         expr, tagged, ptr = cx.local(), cx.local(), cx.local()
-        sideType = lu.sumSideType(self.type.parms[self.side].llvm(cx))
+        sideType = lu.sumSideType(cx.s[self.type].parms[self.side].llvm(cx))
         return self.expr.compile(cx, expr) + \
             lu.formAggregate(sideType, cx, tagged, self.side, expr) \
              + lu.heapCreate(sideType, tagged, cx, ptr) + [
@@ -317,3 +317,18 @@ class ErrorExpr(Expr):
         self.type = VarType()
     def compile(self, cx, out):
         return lu.dup('undef', out, self.type.llvm(cx), cx)
+
+class StringLiteral(Expr):
+    def __init__(self, string, unify):
+        self.type = VarType()
+        unify(self.type, types.Sum(types.Product(types.Char, self.type), types.Unit()))
+        for c in string:
+            assert(ord(c) < 256)
+        self.string = string
+    def compile(self, cx, out):
+        node = SumConstructor(1, UnitLiteral())
+        node.type = self.type
+        for c in self.string[::-1]:
+            node = SumConstructor(0, Product(IntegralLiteral(types.Char, ord(c)), node))
+            node.type = self.type
+        return node.compile(cx, out)

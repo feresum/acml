@@ -190,6 +190,8 @@ class Parser:
             return IntegralLiteral(types.Bool, 0)
         if type(self.tl[-1]) is str and self.tl[-1][0] == "'":
             return IntegralLiteral(types.Char, ord(self.tl.pop()[1]))
+        if type(self.tl[-1]) is str and self.tl[-1][0] == '"':
+            return StringLiteral(self.tl.pop()[1:-1].replace('""', '"'), self.unify)
         if self.tl[-1] == '_builtin':
             self.tl.pop()
             assert(self.tl.pop() == '(')
