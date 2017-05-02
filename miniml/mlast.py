@@ -25,6 +25,8 @@ class Expr:
         self.depth = d
         for c in self.children():
             c.markDepth(d + 1)
+    def toCode(self, tcx):
+        return '[toCode unimplemented]'
 
 class Var: pass
 
@@ -99,6 +101,13 @@ class Lambda(Expr):
         cx.lambdaDefinitions.append(lu.formatFunctionDef(fsig, fbody, cx.llvmVersion))
         
         return storeClosure + lu.makeFuncObj(name, self.type, clPtr, cx, out)
+    def toCode(self, tcx):
+        arg = tcx.name()
+        tcx.bind(self.var, arg)
+        ret = 'fun %s -> (%s)' % (arg, self.expr.toCode(tcx))
+        tcx.unbind(self.var)
+        return ret
+
 class LetBinding(Expr):
     def __init__(self, var, value, expr):
         self.var = var
@@ -122,6 +131,13 @@ class LetBinding(Expr):
             del cx.bindings[key], cx.bindings2[key]
         del self.var.instantiationKeys
         return instantiationsCode + exprCode + unrefCode
+    def toCode(self, tcx):
+        v = tcx.name()
+        boundCode = self.value.toCode(tcx)
+        tcx.bind(self.var, v)
+        ret = 'let %s = (%s) in (%s)' % (v, boundCode, self.expr.toCode(tcx))
+        tcx.unbind(self.var)
+        return ret
 
 class Sequence(Expr):
     def __init__(self, x0, x1):
@@ -132,6 +148,8 @@ class Sequence(Expr):
         return [self.x0, self.x1]
     def compile(self, cx, out):
         return self.x0.compile(cx, cx.local()) + self.x1.compile(cx, out)
+    def toCode(self, tcx):
+        return '(%s); (%s)' % (self.x0.toCode(tcx), self.x1.toCode(tcx))
         
 class If2(Expr):
     def __init__(self, cond, expr):
@@ -145,6 +163,8 @@ class If2(Expr):
         return self.cond.compile(cx, condReg) + \
         lu.ifThen(condReg, self.expr.compile(cx, cx.local()), cx) + \
         lu.dup('undef', out, '%Unit', cx)
+    def toCode(self, tcx):
+        return 'if (%s) then (%s)' % (self.cond.toCode(tcx), self.expr.toCode(tcx))
         
 class If3(Expr):
     def __init__(self, cond, trueExpr, falseExpr):
@@ -159,7 +179,10 @@ class If3(Expr):
         return self.cond.compile(cx, condReg) + lu.conditionalValue(condReg, self.type.llvm(cx), 
             self.trueExpr.compile(cx, trueReg), trueReg, self.falseExpr.compile(cx, falseReg), 
             falseReg, cx, out)
-                
+    def toCode(self, tcx):
+        return 'if (%s) then (%s) else (%s)' % (
+            self.cond.toCode(tcx), self.trueExpr.toCode(tcx), self.falseExpr.toCode(tcx))
+
 class BindingRef(Expr):
     def compile(self, cx, out):
         k = self.key(cx)
@@ -168,6 +191,9 @@ class BindingRef(Expr):
         return ref(cx) + lu.dup(reg, out, ltype, cx)
     def key(self, cx):
         return (self.var, cx.canonicalStr(self.type))
+    def toCode(self, tcx):
+        return tcx.nameOf(self.var)
+
 class LetBindingRef(BindingRef):
     def __init__(self, var, subst, nongeneric):
         self.var = var
@@ -219,6 +245,8 @@ class Application(Expr):
                 fptr, '%voidptr', cl, ftype.argument().llvm(cx), argReg)] + \
             mem.unreference(funcReg, self.function.type, cx) + \
             mem.unreference(argReg, self.argument.type, cx)
+    def toCode(self, tcx):
+        return '(%s) (%s)' % (self.function.toCode(tcx), self.argument.toCode(tcx))
 
 class NativeFunction(Expr):
     def __init__(self, name, type):
@@ -234,6 +262,10 @@ class IntegralLiteral(Expr):
         self.type = type
     def compile(self, cx, out):
         return ['%s = add %s 0, %d' % (out, self.type.llvm(cx), self.value)]
+    def toCode(self, tcx):
+        return {types.Bool: 'true' if self.value else 'false',
+                types.Char: "'%c'" % (self.value & 255),
+                types.Int: '%d' % self.value}[self.type]
 
 class Product(Expr):
     def __init__(self, fst, snd):
@@ -248,6 +280,8 @@ class Product(Expr):
         return self.fst.compile(cx, fst) + self.snd.compile(cx, snd) + [
             inst.insertvalue(ltype, 'undef', self.fst.type.llvm(cx), fst, r, 0),
             inst.insertvalue(ltype, r, self.snd.type.llvm(cx), snd, out, 1) + ';prod']
+    def toCode(self, tcx):
+        return '(%s), (%s)' % (self.fst.toCode(tcx), self.snd.toCode(tcx))
 
 class SumConstructor(Expr):
     def __init__(self, side, expr):
@@ -263,7 +297,37 @@ class SumConstructor(Expr):
             lu.formAggregate(sideType, cx, tagged, self.side, expr) \
              + lu.heapCreate(sideType, tagged, cx, ptr) + [
             inst.bitcast('%s*' % sideType, self.type.llvm(cx), ptr, out)]
-            
+    def toCode(self, tcx):
+        return '<>'[self.side] + self.expr.toCode(tcx) + '|'
+
+class RegisterRef(Expr):
+    def __init__(self, reg, type):
+        self.reg = reg
+        self.type = type
+    def compile(self, cx, out):
+        return lu.dup(self.reg, out, self.type.llvm(cx), cx)
+
+class Switch(Expr):
+    def __init__(self, sumExpr, leftFun, rightFun):
+        self.sumExpr = sumExpr
+        self.leftFun = leftFun
+        self.rightFun = rightFun
+        self.type = leftFun.expr.type
+    def children(self):
+        return [self.sumExpr, self.leftFun, self.rightFun]
+    def compile(self, cx, out):
+        sum, sel = cx.local(), cx.local()
+        sumref = lambda: RegisterRef(sum, self.sumExpr.type)
+        def case(i, fn):
+            a = Application(fn, SumProjection(sumref(), i, fn.var.type))
+            a.type = self.type
+            return a
+        return self.sumExpr.compile(cx, sum) + lu.getSumTypeSelector(sum, cx, sel) + \
+            If3(RegisterRef(sel, types.Bool), case(1, self.rightFun),
+                case(0, self.leftFun)).compile(cx, out)
+    def toCode(self, tcx):
+        return 'switch(%s: %s | %s)' % (self.sumExpr.toCode(tcx),
+            self.leftFun.toCode(tcx)[4:], self.rightFun.toCode(tcx)[4:])
         
 class SumProjection(Expr):
     def __init__(self, sumExpr, side, type):
@@ -298,6 +362,8 @@ class UnitLiteral(Expr):
         self.type = types.Unit()
     def compile(self, cx, out):
         return lu.dup('undef', out, '%Unit', cx)
+    def toCode(self, tcx):
+        return '()'
         
 class ProductProjection(Expr):
     def __init__(self, productExpr, side, type):
@@ -332,3 +398,20 @@ class StringLiteral(Expr):
             node = SumConstructor(0, Product(IntegralLiteral(types.Char, ord(c)), node))
             node.type = self.type
         return node.compile(cx, out)
+    def toCode(self, tcx):
+        return '"' + self.string.replace('"', '""') + '"'
+
+class TextCodeContext:
+    def __init__(self):
+        self.n = 0
+        self.bindings = {}
+    def name(self):
+        self.n += 1
+        return 'v' + str(self.n)
+    def bind(self, var, name):
+        self.bindings[var] = name
+    def unbind(self, var):
+        del self.bindings[var]
+    def nameOf(self, var):
+        return self.bindings[var]
+

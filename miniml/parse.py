@@ -156,31 +156,24 @@ class Parser:
         prod = types.Product(VarType(), VarType())
         self.unify(prod, x.type)
         return ProductProjection(x, side, prod.parms[side])
-        
+
     def switch_f(self):
         assert(self.tl.pop() == '(')
         sumExpr = self.expr()
         assert(self.tl.pop() == ':')
         sumType = types.Sum(types.VarType(), types.VarType())
         self.unify(sumType, sumExpr.type)
-        temp = LambdaVar()
-        self.lambdaTypes.add(temp.type)
-        tempRef = lambda: LambdaBindingRef(temp)
         def case(i):
             f = self.fun_f()
-            a = Application(f, SumProjection(tempRef(), i, sumType.parms[i]))
-            self.unify(a.function.type, types.Arrow(a.argument.type, a.type))
-            return a
+            self.unify(f.var.type, sumType.parms[i])
+            return f
         left = case(0)
         assert(self.tl.pop() == '|')
         right = case(1)
         assert(self.tl.pop() == ')')
-        self.unify(left.type, right.type)
-        out = Application(Lambda(temp, If3(SumSide(tempRef()), right, left)), sumExpr)
-        self.unify(out.function.type, types.Arrow(out.argument.type, out.type))
-        self.lambdaTypes.remove(temp.type)
-        return out
-        
+        self.unify(left.expr.type, right.expr.type)
+        return Switch(sumExpr, left, right)
+
     def single(self):
         if self.tl[-1] == 'true':
             self.tl.pop()
