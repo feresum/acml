@@ -16,13 +16,17 @@ let ieq = expand-product-arg _builtin(integer_equal) in
 let idiv = flip (expand-product-arg _builtin(integer_divide)) in
 let irem = flip (expand-product-arg _builtin(integer_remainder)) in
 let imul = expand-product-arg _builtin(integer_multiply) in
+let ixor = expand-product-arg _builtin(integer_xor) in
+let iand = expand-product-arg _builtin(integer_and) in
+let ior = expand-product-arg _builtin(integer_or) in
 let iabs = fun x -> (if ilt x 0 then ineg x else x) in
 let ipow = fun b -> fun x ->
     if ieq 0 x then 1
-    else if ilt x 0 then 0
+    else if ieq (ineg 1) b then if ieq 1 (iand 1 x) then ineg 1 else 1
     else if ilt (iabs b) 2 then b
+    else if ilt x 0 then 0
     else self-apply (fun p -> fun x ->
-    if ieq 0 x then 1 else imul b (p p (iadd x (ineg 1)))) x in
+        if ieq 0 x then 1 else imul b (p p (iadd (ineg 1) x))) x in
     
 let i64-max = 9223372036854775807 in
 
